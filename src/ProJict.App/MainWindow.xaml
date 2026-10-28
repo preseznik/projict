@@ -1,0 +1,165 @@
+<Window x:Class="ProJict.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ProJict.App.ViewModels"
+        xmlns:views="clr-namespace:ProJict.App.Views"
+        Title="ProJict" Width="1280" Height="820" MinWidth="820" MinHeight="520"
+        Icon="Assets/ProJict.ico" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ProjectViewModel}">
+            <views:ProjectView />
+        </DataTemplate>
+    </Window.Resources>
+    <Window.InputBindings>
+        <KeyBinding Gesture="Ctrl+K" Command="{Binding SearchCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding SearchCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+N" Command="{Binding NewProjectCommand}" />
+        <KeyBinding Gesture="Ctrl+E" Command="{Binding ExportCommand}" />
+        <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveNowCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+D" Command="{Binding ShowDashboardCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+I" Command="{Binding ShowInboxCommand}" />
+    </Window.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="260" MinWidth="200" MaxWidth="420" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar -->
+        <Border Grid.Column="0" Background="{DynamicResource LayerFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="8,10,8,8">
+                <StackPanel DockPanel.Dock="Top">
+                    <StackPanel Orientation="Horizontal" Margin="8,2,0,12">
+                        <Image Source="Assets/ProJict.ico" Width="24" Height="24" />
+                        <TextBlock Text="ProJict" FontSize="18" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Button Style="{StaticResource NavButton}" Command="{Binding SearchCommand}" ToolTip="Search all projects (Ctrl+K)">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="26" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE721;" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Search…" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Grid.Column="2" Text="Ctrl+K" Style="{StaticResource MutedText}" FontSize="11" />
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Command="{Binding ShowDashboardCommand}" Tag="{Binding IsDashboardActive}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE80F;" Width="26" HorizontalAlignment="Left" TextAlignment="Left" />
+                            <TextBlock Text="Dashboard" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Command="{Binding ShowInboxCommand}" Tag="{Binding IsInboxActive}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="26" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE719;" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Inbox / ideas" />
+                            <TextBlock Grid.Column="2" Text="{Binding InboxCount}" Style="{StaticResource MutedText}" />
+                        </Grid>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Command="{Binding QuickCaptureCommand}" ToolTip="Quick capture (global hotkey, see Settings)">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE710;" Width="26" HorizontalAlignment="Left" TextAlignment="Left" />
+                            <TextBlock Text="Quick capture" />
+                        </StackPanel>
+                    </Button>
+                    <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="4,10,4,4" />
+                </StackPanel>
+
+                <UniformGrid DockPanel.Dock="Bottom" Rows="1" Margin="0,8,0,0">
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xE710;" AutomationProperties.Name="New project" ToolTip="New project (Ctrl+Shift+N)" Command="{Binding NewProjectCommand}" />
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8B5;" AutomationProperties.Name="Import" ToolTip="Import TXT files…" Command="{Binding ImportCommand}" />
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xEDE1;" AutomationProperties.Name="Export" ToolTip="Export to TXT… (Ctrl+E)" Command="{Binding ExportCommand}" />
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xE713;" AutomationProperties.Name="Settings" ToolTip="Settings" Command="{Binding OpenSettingsCommand}" />
+                </UniformGrid>
+
+                <ListBox x:Name="ProjectList" ItemsSource="{Binding ProjectsView}" SelectedItem="{Binding SelectedProjectItem}"
+                         Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource MutedText}" FontWeight="SemiBold" Margin="8,10,0,2" />
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:ProjectListItemViewModel}">
+                            <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" Background="Transparent">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Width="7" Height="7" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" HorizontalAlignment="Left" ToolTip="{Binding Status}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding OpenCount}" Style="{StaticResource MutedText}" Margin="6,0,0,0" />
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                        <MenuItem Header="Archive / unarchive" Command="{Binding PlacementTarget.Tag.ArchiveProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                        <MenuItem Header="Export to TXT…" Command="{Binding PlacementTarget.Tag.ExportProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Delete…" Command="{Binding PlacementTarget.Tag.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch" Background="Transparent" ResizeBehavior="PreviousAndNext" />
+
+        <ContentControl Grid.Column="2" Content="{Binding CurrentView}" Focusable="False" />
+
+        <!-- Update available -->
+        <Border Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding Updates}" Padding="14,8"
+                Background="{DynamicResource SystemFillColorAttentionBackgroundBrush}"
+                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
+                Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <TextBlock Style="{StaticResource Icon}" Text="&#xE896;" Margin="0,0,10,0" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <ProgressBar Width="140" Height="4" Margin="0,0,12,0" Value="{Binding Progress, Mode=OneWay}" Maximum="100"
+                                 Visibility="{Binding IsDownloading, Converter={StaticResource BoolToVis}}" />
+                    <Button Style="{StaticResource SubtleButton}" Content="What's new" Command="{Binding ShowNotesCommand}" />
+                    <Button Style="{StaticResource AccentButtonStyle}" Content="Install update" Command="{Binding InstallCommand}" Margin="6,0"
+                            IsEnabled="{Binding IsDownloading, Converter={StaticResource InvBool}}" />
+                    <Button Style="{StaticResource SubtleButton}" Content="Skip this version" Command="{Binding SkipCommand}" />
+                    <Button Style="{StaticResource SubtleButton}" Content="Later" Command="{Binding LaterCommand}" />
+                </StackPanel>
+                <TextBlock Text="{Binding BannerText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Border>
+
+        <!-- Status bar -->
+        <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,4">
+            <Grid>
+                <TextBlock Text="{Binding State.StatusText}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding State.Store.DataRoot, StringFormat=Data: {0}}" Style="{StaticResource MutedText}" HorizontalAlignment="Right" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

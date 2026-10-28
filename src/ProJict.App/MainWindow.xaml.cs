@@ -1,0 +1,67 @@
+using System.ComponentModel;
+using System.Windows;
+using ProJict.App.ViewModels;
+
+namespace ProJict.App;
+
+public partial class MainWindow : Window
+{
+    public MainWindow(MainViewModel viewModel)
+    {
+        InitializeComponent();
+        DataContext = viewModel;
+        RestorePlacement();
+    }
+
+    private void RestorePlacement()
+    {
+        var s = App.Current.State.AppSettings;
+        if (s.WindowWidth is > 400 && s.WindowHeight is > 300 && s.WindowLeft is { } left && s.WindowTop is { } top)
+        {
+            // Only restore when the window would still be on a connected screen.
+            var screen = new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight);
+            if (screen.IntersectsWith(new Rect(left, top, s.WindowWidth.Value, s.WindowHeight.Value)))
+            {
+                WindowStartupLocation = WindowStartupLocation.Manual;
+                Left = left;
+                Top = top;
+                Width = s.WindowWidth.Value;
+                Height = s.WindowHeight.Value;
+            }
+        }
+        if (s.WindowMaximized) WindowState = WindowState.Maximized;
+    }
+
+    private void SavePlacement()
+    {
+        var s = App.Current.State.AppSettings;
+        var bounds = WindowState == WindowState.Normal ? new Rect(Left, Top, Width, Height) : RestoreBounds;
+        s.WindowLeft = bounds.Left;
+        s.WindowTop = bounds.Top;
+        s.WindowWidth = bounds.Width;
+        s.WindowHeight = bounds.Height;
+        s.WindowMaximized = WindowState == WindowState.Maximized;
+        App.Current.State.SaveAppSettings();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        SavePlacement();
+        var app = App.Current;
+        app.State.SaveNow();
+        if (!app.IsExiting && app.State.Settings.CloseToTray)
+        {
+            e.Cancel = true;
+            Hide();
+            return;
+        }
+        base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        App.Current.OnMainWindowClosed();
+    }
+}

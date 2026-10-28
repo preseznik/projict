@@ -1,0 +1,71 @@
+namespace ProJict.Core.Model;
+
+/// <summary>Where an item lives: its category, the list that holds it and its parent (null for top-level).</summary>
+public sealed record ItemLocation(Category Category, List<TodoItem> Siblings, TodoItem? Parent, TodoItem Item, int Depth)
+{
+    public int Index => Siblings.IndexOf(Item);
+}
+
+public static class ProjectExtensions
+{
+    public static IEnumerable<ItemLocation> Walk(this Project project)
+    {
+        foreach (var category in project.Categories)
+            foreach (var loc in Walk(category))
+                yield return loc;
+    }
+
+    public static IEnumerable<ItemLocation> Walk(this Category category)
+    {
+        return WalkList(category, category.Items, null, 0);
+
+        static IEnumerable<ItemLocation> WalkList(Category c, List<TodoItem> list, TodoItem? parent, int depth)
+        {
+            foreach (var item in list.ToList())
+            {
+                yield return new ItemLocation(c, list, parent, item, depth);
+                foreach (var child in WalkList(c, item.Children, item, depth + 1))
+                    yield return child;
+            }
+        }
+    }
+
+    public static IEnumerable<TodoItem> Descendants(this TodoItem item)
+    {
+        foreach (var child in item.Children)
+        {
+            yield return child;
+            foreach (var d in child.Descendants())
+                yield return d;
+        }
+    }
+
+    public static ItemLocation? Find(this Project project, Guid itemId) =>
+        project.Walk().FirstOrDefault(l => l.Item.Id == itemId);
+
+    public static Category? FindCategory(this Project project, string name) =>
+        project.Categories.FirstOrDefault(c => CategoryNamesEqual(c.Name, name));
+
+    public static Category GetOrAddCategory(this Project project, string name)
+    {
+        var existing = project.FindCategory(name);
+        if (existing != null) return existing;
+        var created = new Category { Name = name.Trim() };
+        project.Categories.Add(created);
+        return created;
+    }
+
+    public static bool CategoryNamesEqual(string a, string b) =>
+        string.Equals(NormalizeCategory(a), NormalizeCategory(b), StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeCategory(string name) => name.Trim().TrimEnd(':').Trim();
+
+    public static bool IsBugLike(this TodoItem item) =>
+        item.Tag is { } tag && (tag.StartsWith("BUG", StringComparison.OrdinalIgnoreCase) ||
+                                tag.StartsWith("ISSUE", StringComparison.OrdinalIgnoreCase) ||
+                                tag.StartsWith("FIX", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Text as written in the TXT files: "TAG: text".</summary>
+    public static string DisplayText(this TodoItem item) =>
+        string.IsNullOrEmpty(item.Tag) ? item.Text : $"{item.Tag}: {item.Text}";
+}

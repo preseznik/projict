@@ -1,0 +1,84 @@
+using System.Diagnostics;
+using System.IO;
+using System.Net.Http;
+using System.Text.Json;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using ProJict.Core.Updates;
+
+namespace ProJict.App.Services;
+
+/// <summary>Looks for a newer published installer, and downloads and runs it on request.</summary>
+public sealed partial class UpdateService(AppState state) : ObservableObject
+{
+    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(5) };
+
+    public static Version CurrentVersion { get; } = typeof(UpdateService).Assembly.GetName().Version ?? new Version(0, 0, 0);
+    public static string CurrentVersionText => CurrentVersion.ToString(3);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAvailable), nameof(BannerText))]
+    private UpdateInfo? _available;
+
+    [ObservableProperty] private bool _isDownloading;
+    [ObservableProperty] private double _progress;
+
+    public bool IsAvailable => Available != null;
+    public string BannerText => Available == null ? ""
+        : $"ProJict {Available.Version.ToString(3)} is available (you have {CurrentVersionText}).";
+
+    /// <summary>Returns a short result message; a found update also shows the banner unless that version was skipped.</summary>
+    public async Task<string> CheckAsync(bool manual)
+    {
+        try
+        {
+            var info = await UpdateChecker.CheckAsync(Http, CurrentVersion);
+            state.AppSettings.LastUpdateCheck = DateTime.Now;
+            state.SaveAppSettings();
+            if (info == null) return $"You have the latest version ({CurrentVersionText}).";
+            if (manual || !string.Equals(info.Tag, state.AppSettings.SkippedVersion, StringComparison.OrdinalIgnoreCase))
+                Available = info;
+            return $"ProJict {info.Version.ToString(3)} is available.";
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return "Could not check for updates: " + ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private async Task InstallAsync()
+    {
+        if (Available is not { } info || IsDownloading) return;
+        IsDownloading = true;
+        Progress = 0;
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), "ProJict-update", info.AssetName);
+            await UpdateChecker.DownloadAsync(Http, info, path, new Progress<double>(p => Progress = p * 100));
+            state.SaveNow();
+            // The installer replaces the program files and starts ProJict again when it is done.
+            Process.Start(new ProcessStartInfo(path, "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS") { UseShellExecute = true });
+            App.Current.ExitApp();
+        }
+        catch (Exception ex)
+        {
+            state.StatusText = "Update failed: " + ex.Message;
+            IsDownloading = false;
+        }
+    }
+
+    [RelayCommand]
+    private void Skip()
+    {
+        if (Available == null) return;
+        state.AppSettings.SkippedVersion = Available.Tag;
+        state.SaveAppSettings();
+        Available = null;
+    }
+
+    [RelayCommand] private void Later() => Available = null;
+
+    [RelayCommand]
+    private void ShowNotes() => ShellLauncher.OpenUrl(Available?.ReleaseUrl ?? UpdateChecker.ReleasesPage);
+}

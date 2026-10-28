@@ -1,0 +1,184 @@
+<Window x:Class="ProJict.App.Views.ImportWizardWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ProJict.App.ViewModels"
+        Title="Import TXT files" Width="1180" Height="760" MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="{Binding StepTitle}" FontSize="20" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Error}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Visibility="{Binding Error, Converter={StaticResource EmptyToVis}}" />
+        </StackPanel>
+
+        <!-- Step 0: folder -->
+        <StackPanel Grid.Row="1" Margin="0,16,0,0">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Step}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock TextWrapping="Wrap" Style="{StaticResource MutedText}" FontSize="13" Margin="0,0,0,12"
+                       Text="ProJict reads the folder's top-level .txt files (TODO-*, TODO2-*, DONE-*, WORK-*, DOCS-*, …). The files are only read — they stay exactly as they are for your archive." />
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Browse…" Command="{Binding BrowseCommand}" Margin="8,0,0,0" />
+                <TextBox Text="{Binding Folder, UpdateSourceTrigger=PropertyChanged}" />
+            </DockPanel>
+        </StackPanel>
+
+        <!-- Step 1: mapping -->
+        <DockPanel Grid.Row="1" Margin="0,12,0,0">
+            <DockPanel.Style>
+                <Style TargetType="DockPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Step}" Value="1"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DockPanel.Style>
+            <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Style="{StaticResource MutedText}" FontSize="13" Margin="0,0,0,10"
+                       Text="List = TODO items, Done list = DONE file (everything marked done), Note = kept as a note on the project, Skip = ignored. Files without a known prefix are skipped by default (they may hold credentials). Files with the same Project are merged; a Category prefix keeps merged lists apart (e.g. MAPS · HUD)." />
+            <DataGrid ItemsSource="{Binding Files}" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                      HeadersVisibility="Column" GridLinesVisibility="Horizontal" RowHeight="40" SelectionUnit="FullRow">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="File" Binding="{Binding FileName}" IsReadOnly="True" Width="240" />
+                    <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" IsReadOnly="True" Width="80" />
+                    <DataGridTextColumn Header="Modified" Binding="{Binding ModifiedText}" IsReadOnly="True" Width="110" />
+                    <DataGridTemplateColumn Header="Role" Width="130">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:ImportFileRow}">
+                                <ComboBox ItemsSource="{x:Static vm:ImportWizardViewModel.Roles}" SelectedItem="{Binding Role, UpdateSourceTrigger=PropertyChanged}" Margin="2" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Project" Width="220">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:ImportFileRow}">
+                                <ComboBox IsEditable="True" Margin="2"
+                                          ItemsSource="{Binding DataContext.ProjectSuggestions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          Text="{Binding TargetProject, UpdateSourceTrigger=LostFocus}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Group" Width="140">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:ImportFileRow}">
+                                <ComboBox IsEditable="True" Margin="2"
+                                          ItemsSource="{Binding DataContext.Groups, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          Text="{Binding Group, UpdateSourceTrigger=LostFocus}" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="Category prefix" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type vm:ImportFileRow}">
+                                <TextBox Text="{Binding CategoryPrefix, UpdateSourceTrigger=LostFocus}" Margin="2" />
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <!-- Step 2: preview -->
+        <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Step}" Value="2"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <ListBox ItemsSource="{Binding Drafts}" SelectedItem="{Binding SelectedDraft}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:ImportDraftViewModel}">
+                        <StackPanel Margin="0,2">
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ActionText}" Style="{StaticResource MutedText}" />
+                            <TextBlock Text="{Binding CountsText}" Style="{StaticResource MutedText}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <DockPanel Grid.Column="1" Margin="12,0,6,0" DataContext="{Binding SelectedDraft}">
+                <TextBlock DockPanel.Dock="Top" Text="Parsed result — set a category to Note or Skip if it was misread" Style="{StaticResource MutedText}" Margin="0,0,0,6" />
+                <Expander DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                    <Expander.Header>
+                        <TextBlock Text="{Binding Notes.Count, StringFormat=Notes ({0})}" />
+                    </Expander.Header>
+                    <ItemsControl ItemsSource="{Binding Notes}" MaxHeight="160">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Title}" Margin="4,2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+                <TreeView ItemsSource="{Binding Categories}">
+                    <TreeView.Resources>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:ImportCategoryNode}" ItemsSource="{Binding Items}">
+                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                <ComboBox ItemsSource="{x:Static vm:ImportCategoryNode.Modes}" SelectedItem="{Binding Mode}" Width="90" Margin="0,0,8,0" />
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding CountsText}" Style="{StaticResource MutedText}" Margin="8,0,0,0" />
+                            </StackPanel>
+                        </HierarchicalDataTemplate>
+                        <HierarchicalDataTemplate DataType="{x:Type vm:ImportItemNode}" ItemsSource="{Binding Children}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Glyph}" Margin="0,0,6,0" />
+                                <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" MaxWidth="480" ToolTip="{Binding Text}" />
+                            </StackPanel>
+                        </HierarchicalDataTemplate>
+                    </TreeView.Resources>
+                </TreeView>
+            </DockPanel>
+
+            <DockPanel Grid.Column="2" Margin="6,0,0,0" DataContext="{Binding SelectedDraft}">
+                <TextBlock DockPanel.Dock="Top" Text="Original files (kept in the project's Archive)" Style="{StaticResource MutedText}" Margin="0,0,0,6" />
+                <ComboBox DockPanel.Dock="Top" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}" DisplayMemberPath="FileName" Margin="0,0,0,6" />
+                <TextBox Text="{Binding SelectedFile.Text, Mode=OneWay}" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         TextWrapping="NoWrap" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+            </DockPanel>
+        </Grid>
+
+        <!-- Step 3: summary -->
+        <StackPanel Grid.Row="1" Margin="0,16,0,0">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Step}" Value="3"><Setter Property="Visibility" Value="Visible" /></DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="14" />
+        </StackPanel>
+
+        <DockPanel Grid.Row="2" Margin="0,14,0,0" LastChildFill="False">
+            <CheckBox DockPanel.Dock="Left" IsChecked="{Binding CreateBaseline}" VerticalAlignment="Center"
+                      Visibility="{Binding IsPreviewStep, Converter={StaticResource BoolToVis}}"
+                      Content="Treat already-done items as released (first patch notes only list new work)" />
+            <Button DockPanel.Dock="Right" Content="{Binding NextText}" Command="{Binding NextCommand}" Style="{StaticResource AccentButtonStyle}" MinWidth="120" Margin="8,0,0,0" IsDefault="True" />
+            <Button DockPanel.Dock="Right" Content="Back" Command="{Binding BackCommand}" MinWidth="90" IsEnabled="{Binding CanGoBack}" />
+            <Button DockPanel.Dock="Right" Content="Cancel" IsCancel="True" MinWidth="90" Margin="0,0,8,0" Click="Cancel_Click"
+                    Visibility="{Binding IsFinished, Converter={StaticResource InvBoolToVis}}" />
+        </DockPanel>
+    </Grid>
+</Window>

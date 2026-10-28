@@ -1,0 +1,34 @@
+<Window x:Class="ProJict.App.Views.ExportDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Export to TXT" Width="560" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <StackPanel Margin="22,18">
+        <TextBlock Text="Export to TODO / DONE text files" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,4,0,14"
+                   Text="Writes TODO-&lt;name&gt;.txt (or WORK-…) and DONE-&lt;name&gt;.txt in your usual format: ALL-CAPS categories, “- ” open, “-+ ” in progress, “+ ” done, tab-indented sub-items. Files ProJict did not write are never overwritten without asking." />
+
+        <RadioButton x:Name="CurrentOnly" GroupName="Scope" IsChecked="True" />
+        <RadioButton x:Name="AllProjects" GroupName="Scope" Content="All projects" Margin="0,4,0,0" />
+        <CheckBox x:Name="IncludeArchived" Content="Include archived projects" Margin="28,4,0,0" IsEnabled="{Binding IsChecked, ElementName=AllProjects}" />
+
+        <TextBlock Text="Folder" Style="{StaticResource SectionTitle}" />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="Browse_Click" />
+            <TextBox x:Name="Folder" AutomationProperties.Name="Export folder" />
+        </DockPanel>
+
+        <TextBlock Text="Options" Style="{StaticResource SectionTitle}" />
+        <CheckBox x:Name="EmptyCategories" Content="Write empty categories too (like your DONE files)" />
+        <CheckBox x:Name="DoneInTodo" Content="Also list done items as “+” in the TODO file" Margin="0,4,0,0" />
+        <CheckBox x:Name="ExportNotes" Content="Export notes as NOTES-&lt;name&gt;.txt" Margin="0,4,0,0" />
+
+        <TextBlock x:Name="Result" TextWrapping="Wrap" Margin="0,14,0,0" Visibility="Collapsed" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Open folder" MinWidth="100" Click="OpenFolder_Click" />
+            <Button Content="Export" Style="{StaticResource AccentButtonStyle}" IsDefault="True" MinWidth="100" Margin="8,0,0,0" Click="Export_Click" />
+            <Button Content="Close" IsCancel="True" MinWidth="90" Margin="8,0,0,0" />
+        </StackPanel>
+    </StackPanel>
+</Window>

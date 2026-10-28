@@ -1,0 +1,87 @@
+<Window x:Class="ProJict.App.Views.PatchNotesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:ProJict.App.ViewModels"
+        Title="New release" Width="1080" Height="720" MinWidth="820" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="20,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock FontSize="20" FontWeight="SemiBold">
+                <Run Text="Patch notes · " /><Run Text="{Binding ProjectName, Mode=OneWay}" />
+            </TextBlock>
+            <TextBlock Text="{Binding LastReleaseText}" Style="{StaticResource MutedText}" FontSize="13" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <WrapPanel Grid.Row="1" Margin="0,14,0,10">
+            <TextBlock Text="Version" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}" Width="110" />
+            <Button Style="{StaticResource SubtleButton}" Content="+patch" Command="{Binding BumpPatchCommand}" Margin="4,0,0,0" />
+            <Button Style="{StaticResource SubtleButton}" Content="+minor" Command="{Binding BumpMinorCommand}" />
+            <Button Style="{StaticResource SubtleButton}" Content="+major" Command="{Binding BumpMajorCommand}" />
+            <TextBlock Text="Date" VerticalAlignment="Center" Margin="18,0,8,0" />
+            <DatePicker SelectedDate="{Binding Date}" Width="150" />
+            <TextBlock Text="Title" VerticalAlignment="Center" Margin="18,0,8,0" />
+            <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" Width="220" />
+            <RadioButton Content="Markdown" IsChecked="{Binding Markdown}" Margin="18,0,0,0" VerticalAlignment="Center" GroupName="Fmt" />
+            <RadioButton Content="Plain text" Margin="8,0,0,0" VerticalAlignment="Center" GroupName="Fmt" />
+        </WrapPanel>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <DockPanel Margin="0,0,8,0">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Done since the last release" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <Button Style="{StaticResource SubtleButton}" Content="All" Command="{Binding SelectAllCommand}" CommandParameter="True" Margin="12,0,0,0" />
+                    <Button Style="{StaticResource SubtleButton}" Content="None" Command="{Binding SelectAllCommand}" CommandParameter="False" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Nothing has been finished since the last release." Style="{StaticResource MutedText}"
+                           Visibility="{Binding HasCandidates, Converter={StaticResource InvBoolToVis}}" />
+                <ListBox ItemsSource="{Binding CandidatesView}">
+                    <ListBox.GroupStyle>
+                        <GroupStyle>
+                            <GroupStyle.HeaderTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Margin="4,8,0,2" />
+                                </DataTemplate>
+                            </GroupStyle.HeaderTemplate>
+                        </GroupStyle>
+                    </ListBox.GroupStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:PatchNoteCandidate}">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding DoneText}" Style="{StaticResource MutedText}" Margin="8,0,0,0" />
+                                <CheckBox IsChecked="{Binding Include}" MinWidth="0">
+                                    <TextBlock Text="{Binding Text}" TextWrapping="Wrap" />
+                                </CheckBox>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+            <DockPanel Grid.Column="1" Margin="8,0,0,0">
+                <TextBlock DockPanel.Dock="Top" Text="Preview" FontWeight="SemiBold" Margin="0,4,0,8" />
+                <TextBox Text="{Binding Preview, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                         FontFamily="{StaticResource MonoFont}" FontSize="13" VerticalContentAlignment="Top" />
+            </DockPanel>
+        </Grid>
+
+        <DockPanel Grid.Row="3" Margin="0,14,0,0" LastChildFill="False">
+            <TextBlock x:Name="Error" DockPanel.Dock="Left" Foreground="{DynamicResource SystemFillColorCriticalBrush}" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" Content="Record release" Style="{StaticResource AccentButtonStyle}" MinWidth="130" Margin="8,0,0,0" Click="Create_Click"
+                    ToolTip="Saves the release and marks the selected items as released" />
+            <Button DockPanel.Dock="Right" Content="Close" IsCancel="True" MinWidth="90" Margin="8,0,0,0" />
+            <Button DockPanel.Dock="Right" Content="Save as…" Command="{Binding SaveAsCommand}" MinWidth="90" Margin="8,0,0,0" />
+            <Button DockPanel.Dock="Right" Content="Copy" Command="{Binding CopyCommand}" MinWidth="90" />
+        </DockPanel>
+    </Grid>
+</Window>

@@ -1,0 +1,442 @@
+<UserControl x:Class="ProJict.App.Views.ProjectView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ProJict.App.ViewModels"
+             xmlns:ctl="clr-namespace:ProJict.App.Controls">
+    <UserControl.InputBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}" />
+        <KeyBinding Gesture="Ctrl+Shift+C" AutomationProperties.Name="Copy prompt" Command="{Binding CopyPromptCommand}" />
+    </UserControl.InputBindings>
+
+    <UserControl.Resources>
+        <!-- One line of the outline: grip, three-state checkbox, tag chip, editable text, release/done date. -->
+        <DataTemplate x:Key="RowTemplate" DataType="{x:Type vm:ItemRowViewModel}">
+            <Border x:Name="RowRoot" CornerRadius="4" Padding="0,1" Background="Transparent" BorderThickness="2,0,0,0" BorderBrush="Transparent"
+                    AllowDrop="True" DragOver="Row_DragOver" DragLeave="Row_DragLeave" Drop="Row_Drop"
+                    Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
+                <Grid Margin="{Binding IndentMargin}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="Grip" Text="&#xE76F;" FontFamily="{StaticResource IconFont}" FontSize="12" Opacity="0" Background="Transparent"
+                               Cursor="SizeAll" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8,0,0"
+                               ToolTip="Drag to move · Ctrl+click to select for a prompt"
+                               PreviewMouseLeftButtonDown="Grip_MouseDown" MouseMove="Grip_MouseMove" />
+                    <CheckBox Grid.Column="1" IsChecked="{Binding CheckState}" IsThreeState="False" Focusable="False"
+                              MinWidth="0" MinHeight="0" Padding="0" Margin="2,4,4,0" VerticalAlignment="Top"
+                              ToolTip="Done (Ctrl+Enter) · in progress (Ctrl+I)" />
+                    <Border Grid.Column="2" Style="{StaticResource TagChip}" Background="{Binding Tag, Converter={StaticResource TagToBrush}}"
+                            Visibility="{Binding HasTag, Converter={StaticResource BoolToVis}}" VerticalAlignment="Top" Margin="0,6,4,0">
+                        <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" />
+                    </Border>
+                    <TextBox x:Name="RowText" Grid.Column="3" Uid="RowText" Style="{StaticResource RowTextBox}"
+                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                             PreviewKeyDown="RowText_PreviewKeyDown" GotKeyboardFocus="RowText_GotFocus" LostKeyboardFocus="RowText_LostFocus"
+                             ContextMenuOpening="RowText_ContextMenuOpening" />
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,5,4,0">
+                        <Border Style="{StaticResource TagChip}" Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                Visibility="{Binding ReleaseText, Converter={StaticResource EmptyToVis}}" ToolTip="Included in this release">
+                            <TextBlock Text="{Binding ReleaseText}" Style="{StaticResource ChipText}" />
+                        </Border>
+                        <TextBlock Text="{Binding DoneAtText}" Style="{StaticResource MutedText}" FontSize="11" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Grip" Property="Opacity" Value="0.55" />
+                </Trigger>
+                <DataTrigger Binding="{Binding InDoneSection}" Value="True">
+                    <Setter TargetName="RowText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDoneInOpenSection}" Value="True">
+                    <Setter TargetName="RowText" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                    <Setter TargetName="RowText" Property="TextDecorations" Value="Strikethrough" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                    <Setter TargetName="RowRoot" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                    <Setter TargetName="RowRoot" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Setter TargetName="RowRoot" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CategoryHeaderTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <Border x:Name="HeaderRoot" Background="Transparent" CornerRadius="4" BorderThickness="0,0,0,2" BorderBrush="Transparent"
+                    AllowDrop="True" DragOver="Category_DragOver" DragLeave="Category_DragLeave" Drop="Category_Drop">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="18" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="&#xE76F;" FontFamily="{StaticResource IconFont}" FontSize="12" Opacity="0.35" Background="Transparent"
+                               Cursor="SizeAll" VerticalAlignment="Center" HorizontalAlignment="Center" ToolTip="Drag to reorder categories"
+                               PreviewMouseLeftButtonDown="CategoryGrip_MouseDown" MouseMove="CategoryGrip_MouseMove" />
+                    <Button x:Name="Chevron" Grid.Column="1" Style="{StaticResource SubtleIconButton}" FontSize="11" Padding="5,4"
+                            Command="{Binding ToggleExpandedCommand}" AutomationProperties.Name="Collapse" Content="&#xE70D;" ToolTip="Collapse / expand" />
+                    <TextBox Grid.Column="2" Uid="CategoryName" Style="{StaticResource RowTextBox}" FontSize="15" FontWeight="SemiBold" TextWrapping="NoWrap"
+                             MinWidth="60" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
+                    <TextBox Grid.Column="3" Style="{StaticResource HoverHintTextBox}" FontSize="12" Tag="description…"
+                             Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                             Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
+                    <TextBlock Grid.Column="4" Text="{Binding CountsText}" Style="{StaticResource MutedText}" Margin="8,0" />
+                    <StackPanel Grid.Column="5" Orientation="Horizontal">
+                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE710;" AutomationProperties.Name="Add item" ToolTip="Add item" Click="AddItemButton_Click" />
+                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8C8;" AutomationProperties.Name="Copy category prompt" ToolTip="Copy this category's open items as an AI prompt" Command="{Binding CopyPromptCommand}" />
+                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE712;" AutomationProperties.Name="More" ToolTip="More" Click="CategoryMore_Click" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsExpanded}" Value="False">
+                    <Setter TargetName="Chevron" Property="Content" Value="&#xE76C;" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDropTarget}" Value="True">
+                    <Setter TargetName="HeaderRoot" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Setter TargetName="HeaderRoot" Property="Background" Value="{DynamicResource SubtleFillColorTertiaryBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AddItemTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <TextBox Uid="AddItem" Style="{StaticResource RowTextBox}" Margin="40,2,0,0"
+                     Tag="Add item…  (Enter · prefix BUG: / ADD: to tag)"
+                     Text="{Binding NewItemText, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding AddNewItemCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+        </DataTemplate>
+
+        <DataTemplate x:Key="StackedCategoryTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CategoryHeaderTemplate}" Focusable="False" />
+                    <StackPanel Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                        <ctl:OutlineItemsControl ItemsSource="{Binding OpenRows}" ItemTemplate="{StaticResource RowTemplate}" Focusable="False" />
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AddItemTemplate}" Focusable="False" />
+                        <ToggleButton Style="{StaticResource SubtleToggle}" AutomationProperties.Name="{Binding DoneHeader}" IsChecked="{Binding IsDoneExpanded}" HorizontalAlignment="Left" Margin="18,6,0,0"
+                                      Visibility="{Binding HasDone, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" />
+                                <TextBlock Text="{Binding DoneHeader}" Margin="6,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <ctl:OutlineItemsControl ItemsSource="{Binding DoneRows}" ItemTemplate="{StaticResource RowTemplate}" Focusable="False" Margin="0,2,0,0"
+                                      Visibility="{Binding ShowDoneRows, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="SideBySideCategoryTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource CategoryHeaderTemplate}" Focusable="False" />
+                    <Grid Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="TODO" Style="{StaticResource MutedText}" FontWeight="SemiBold" Margin="22,0,0,4" />
+                            <ctl:OutlineItemsControl ItemsSource="{Binding OpenRows}" ItemTemplate="{StaticResource RowTemplate}" Focusable="False" />
+                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource AddItemTemplate}" Focusable="False" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="10,0" />
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="{Binding DoneHeader}" Style="{StaticResource MutedText}" FontWeight="SemiBold" Margin="22,0,0,4" />
+                            <ctl:OutlineItemsControl ItemsSource="{Binding DoneRows}" ItemTemplate="{StaticResource RowTemplate}" Focusable="False" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Margin="24,14,20,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBox Style="{StaticResource RowTextBox}" FontSize="26" FontWeight="SemiBold" Padding="2,0" TextWrapping="NoWrap"
+                         Text="{Binding Name, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsInbox}" HorizontalAlignment="Left" MinWidth="200" />
+                <StackPanel Orientation="Horizontal" Margin="2,6,0,0" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <Ellipse Width="8" Height="8" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" Margin="0,0,8,0" />
+                    <ComboBox ItemsSource="{x:Static vm:ProjectViewModel.Statuses}" SelectedItem="{Binding Status}" Width="130" ToolTip="Status" />
+                    <ComboBox ItemsSource="{Binding Groups}" Text="{Binding Group, UpdateSourceTrigger=LostFocus}" IsEditable="True" Width="150" Margin="8,0,0,0" ToolTip="Group" />
+                </StackPanel>
+                <TextBlock Margin="2,6,0,0" Style="{StaticResource MutedText}" TextWrapping="Wrap"
+                           Text="Ideas and loose notes. Promote an item to a project from its right-click menu."
+                           Visibility="{Binding IsInbox, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+            <WrapPanel Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Right" MaxWidth="560">
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Folder" Command="{Binding OpenFolderCommand}" ToolTip="Open the local repo folder" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8B7;" /><TextBlock Text="Folder" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="VS Code" Command="{Binding OpenVsCodeCommand}" ToolTip="Open the repo in VS Code" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE943;" /><TextBlock Text="VS Code" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Terminal" Command="{Binding OpenTerminalCommand}" ToolTip="Open a terminal in the repo" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE756;" /><TextBlock Text="Terminal" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="GitHub" Command="{Binding OpenGitHubCommand}" ToolTip="Open the GitHub page" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE774;" /><TextBlock Text="GitHub" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Copy prompt" Command="{Binding CopyPromptCommand}"
+                        ToolTip="Copy selected items (Ctrl+Space / Ctrl+click the grip) — or all open items — as a prompt for Claude/Codex (Ctrl+Shift+C)">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" /><TextBlock Text="Copy prompt" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Release" Command="{Binding NewReleaseCommand}" ToolTip="Patch notes from items done since the last release" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE7C1;" /><TextBlock Text="Release" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Export" Command="{Binding ExportCommand}" ToolTip="Export to TODO/DONE text files">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xEDE1;" /><TextBlock Text="Export" Margin="6,0,0,0" /></StackPanel>
+                </Button>
+            </WrapPanel>
+        </Grid>
+
+        <TabControl Grid.Row="1" Margin="16,8,16,8" SelectedIndex="{Binding SelectedTab}">
+            <!-- Board -->
+            <TabItem Header="Board">
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <DockPanel Margin="4,0,4,8" LastChildFill="False">
+                        <Grid Width="260" DockPanel.Dock="Left">
+                            <TextBox x:Name="FilterBox" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" PreviewKeyDown="FilterBox_PreviewKeyDown" />
+                            <TextBlock Text="Filter (Ctrl+F)" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       Visibility="{Binding FilterText, Converter={StaticResource InvEmptyToVis}}" />
+                        </Grid>
+                        <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" Width="130" Margin="8,0,0,0" ToolTip="Filter by tag" />
+                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" /><TextBlock Text="Show done" Margin="6,0,0,0" /></StackPanel>
+                        </ToggleButton>
+                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Side by side" IsChecked="{Binding SideBySide}" Margin="4,0,0,0" ToolTip="TODO and DONE columns side by side">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE89A;" /><TextBlock Text="Side by side" Margin="6,0,0,0" /></StackPanel>
+                        </ToggleButton>
+
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" AutomationProperties.Name="Add category" Command="{Binding AddCategoryCommand}" ToolTip="New category">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="Category" Margin="6,0,0,0" /></StackPanel>
+                        </Button>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE7A6;" AutomationProperties.Name="Redo" Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE7A7;" AutomationProperties.Name="Undo" Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE8E6;" AutomationProperties.Name="Clear selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear prompt selection" />
+                    </DockPanel>
+
+                    <ScrollViewer x:Name="BoardScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="4,0,8,0">
+                        <StackPanel>
+                            <ctl:OutlineItemsControl x:Name="Board" ItemsSource="{Binding Categories}" Focusable="False">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <ContentControl Content="{Binding}" Focusable="False">
+                                            <ContentControl.Style>
+                                                <Style TargetType="ContentControl">
+                                                    <Setter Property="ContentTemplate" Value="{StaticResource StackedCategoryTemplate}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DataContext.SideBySide, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                            <Setter Property="ContentTemplate" Value="{StaticResource SideBySideCategoryTemplate}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </ContentControl.Style>
+                                        </ContentControl>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ctl:OutlineItemsControl>
+                            <TextBlock Text="No categories yet — add one with “+ Category”." Style="{StaticResource MutedText}" Margin="8,12"
+                                       Visibility="{Binding Categories.Count, Converter={StaticResource InvEmptyToVis}}" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <TextBlock Grid.Row="2" Style="{StaticResource MutedText}" FontSize="11" Margin="6,6,0,0" TextWrapping="Wrap"
+                               Text="Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
+                </Grid>
+            </TabItem>
+
+            <!-- Notes -->
+            <TabItem>
+                <TabItem.Header>
+                    <TextBlock Text="{Binding Notes.Count, StringFormat=Notes ({0})}" />
+                </TabItem.Header>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="New note" Command="{Binding AddNoteCommand}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="New note" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Delete note" Command="{Binding DeleteNoteCommand}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE74D;" /><TextBlock Text="Delete" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" DisplayMemberPath="Title" />
+                    </DockPanel>
+                    <DockPanel Grid.Column="1" Margin="12,0,0,0" Visibility="{Binding SelectedNote, Converter={StaticResource EmptyToVis}}">
+                        <TextBox DockPanel.Dock="Top" Text="{Binding SelectedNote.Title, UpdateSourceTrigger=PropertyChanged}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                        <TextBox Text="{Binding SelectedNote.Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" AcceptsTab="True"
+                                 TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="{StaticResource MonoFont}" FontSize="13"
+                                 VerticalContentAlignment="Top" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Releases -->
+            <TabItem Header="Releases" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Style="{StaticResource SubtleButton}" Command="{Binding NewReleaseCommand}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="New release" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Delete release" Command="{Binding DeleteReleaseCommand}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE74D;" /><TextBlock Text="Delete" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Version}" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource MutedText}">
+                                            <Run Text="{Binding Date, StringFormat=d MMM yyyy, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding ItemIds.Count, Mode=OneWay}" /><Run Text=" items" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                    <DockPanel Grid.Column="1" Margin="12,0,0,0">
+                        <Button DockPanel.Dock="Top" HorizontalAlignment="Right" Style="{StaticResource SubtleButton}" AutomationProperties.Name="Copy patch notes" Command="{Binding CopyReleaseCommand}" Margin="0,0,0,6">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" /><TextBlock Text="Copy patch notes" Margin="6,0,0,0" /></StackPanel>
+                        </Button>
+                        <TextBox Text="{Binding SelectedRelease.Markdown, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                 FontFamily="{StaticResource MonoFont}" FontSize="13" VerticalContentAlignment="Top" />
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- Archive -->
+            <TabItem>
+                <TabItem.Header>
+                    <TextBlock Text="{Binding Archive.Count, StringFormat=Archive ({0})}" />
+                </TabItem.Header>
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="2,0,0,8"
+                                   Text="Original text of the files this project was imported from (read-only)." />
+                        <ListBox ItemsSource="{Binding Archive}" SelectedItem="{Binding SelectedArchive}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding LastWriteTime, StringFormat='modified {0:d MMM yyyy HH:mm}'}" Style="{StaticResource MutedText}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                    <TextBox Grid.Column="1" Margin="12,0,0,0" Text="{Binding SelectedArchive.Text, Mode=OneWay}" IsReadOnly="True"
+                             TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="{StaticResource MonoFont}" FontSize="13" VerticalContentAlignment="Top" />
+                </Grid>
+            </TabItem>
+
+            <!-- Details -->
+            <TabItem Header="Details">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="4,12,12,12" MaxWidth="820" HorizontalAlignment="Left">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="170" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <Grid.Resources>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+                                <Setter Property="Margin" Value="0,10,12,0" />
+                                <Setter Property="VerticalAlignment" Value="Top" />
+                                <Setter Property="FontSize" Value="13" />
+                            </Style>
+                        </Grid.Resources>
+
+                        <TextBlock Grid.Row="0" Text="Export file names" />
+                        <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,4">
+                            <ComboBox Text="{Binding FilePrefix, UpdateSourceTrigger=LostFocus}" IsEditable="True" Width="100" ToolTip="Prefix of the open-items file">
+                                <ComboBoxItem Content="TODO" />
+                                <ComboBoxItem Content="WORK" />
+                            </ComboBox>
+                            <TextBlock Text="-" Margin="6,0" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding Key, UpdateSourceTrigger=LostFocus}" Width="220" ToolTip="File name stem (letters, digits, . _ -)" />
+                            <TextBlock Text="{Binding ExportNamesText}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="1" Text="Local repo folder" />
+                        <DockPanel Grid.Row="1" Grid.Column="1" Margin="0,4">
+                            <Button DockPanel.Dock="Right" Content="Browse…" Command="{Binding BrowseRepoCommand}" Margin="8,0,0,0" />
+                            <TextBox Text="{Binding RepoPath, UpdateSourceTrigger=LostFocus}" />
+                        </DockPanel>
+
+                        <TextBlock Grid.Row="2" Text="GitHub URL" />
+                        <TextBox Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding GitHubUrl, UpdateSourceTrigger=LostFocus}" />
+
+                        <TextBlock Grid.Row="3" Text="Description" />
+                        <TextBox Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" VerticalContentAlignment="Top" />
+
+                        <TextBlock Grid.Row="4" Text="Prompt preamble" />
+                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,4">
+                            <TextBox Text="{Binding PromptPreamble, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="120" VerticalContentAlignment="Top" FontFamily="{StaticResource MonoFont}" FontSize="13" />
+                            <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                                       Text="Put at the top of every “Copy prompt”: engine version, conventions, how to test, what to commit…" />
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

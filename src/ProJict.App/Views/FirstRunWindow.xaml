@@ -1,0 +1,20 @@
+<Window x:Class="ProJict.App.Views.FirstRunWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Welcome to ProJict" Width="580" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen" Icon="pack://application:,,,/Assets/ProJict.ico">
+    <StackPanel Margin="24,20">
+        <TextBlock Text="Where should ProJict keep your projects?" FontSize="18" FontWeight="SemiBold" />
+        <TextBlock Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="0,6,0,14"
+                   Text="ProJict saves one file per project in this folder, plus automatic backups. A folder that is backed up or synced is a good choice. You can change it later in Settings." />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="Browse_Click" />
+            <TextBox x:Name="Folder" TextChanged="Folder_TextChanged" />
+        </DockPanel>
+        <TextBlock x:Name="Existing" Style="{StaticResource MutedText}" Margin="2,6,0,0" Visibility="Collapsed"
+                   Text="This folder already contains ProJict data — it will be opened." />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="Start" Style="{StaticResource AccentButtonStyle}" IsDefault="True" MinWidth="110" Click="Start_Click" />
+        </StackPanel>
+    </StackPanel>
+</Window>
