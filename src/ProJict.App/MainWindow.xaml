@@ -81,7 +81,8 @@
                             <TextBlock Text="Quick capture" />
                         </StackPanel>
                     </Button>
-                    <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="4,10,4,4" />
+                    <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="4,10,4,8" />
+                    <views:ProjectFilterBar DataContext="{Binding SidebarFilter}" Margin="2,0,2,2" />
                 </StackPanel>
 
                 <UniformGrid DockPanel.Dock="Bottom" Rows="1" Margin="0,8,0,0">
@@ -91,42 +92,85 @@
                     <Button Style="{StaticResource SubtleIconButton}" Content="&#xE713;" AutomationProperties.Name="Settings" ToolTip="Settings" Command="{Binding OpenSettingsCommand}" />
                 </UniformGrid>
 
-                <ListBox x:Name="ProjectList" ItemsSource="{Binding ProjectsView}" SelectedItem="{Binding SelectedProjectItem}"
-                         Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                         HorizontalContentAlignment="Stretch">
-                    <ListBox.GroupStyle>
-                        <GroupStyle>
-                            <GroupStyle.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Name}" Style="{StaticResource MutedText}" FontWeight="SemiBold" Margin="8,10,0,2" />
-                                </DataTemplate>
-                            </GroupStyle.HeaderTemplate>
-                        </GroupStyle>
-                    </ListBox.GroupStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:ProjectListItemViewModel}">
-                            <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" Background="Transparent">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="16" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Ellipse Width="7" Height="7" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" HorizontalAlignment="Left" ToolTip="{Binding Status}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="2" Text="{Binding OpenCount}" Style="{StaticResource MutedText}" Margin="6,0,0,0" />
-                                <Grid.ContextMenu>
-                                    <ContextMenu>
-                                        <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
-                                        <MenuItem Header="Archive / unarchive" Command="{Binding PlacementTarget.Tag.ArchiveProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
-                                        <MenuItem Header="Export to TXT…" Command="{Binding PlacementTarget.Tag.ExportProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
-                                        <Separator />
-                                        <MenuItem Header="Delete…" Command="{Binding PlacementTarget.Tag.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
-                                    </ContextMenu>
-                                </Grid.ContextMenu>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <Grid>
+                    <ListBox x:Name="ProjectList" ItemsSource="{Binding ProjectsView}" SelectedItem="{Binding SelectedProjectItem}"
+                             Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             HorizontalContentAlignment="Stretch">
+                        <ListBox.GroupStyle>
+                            <GroupStyle>
+                                <!-- Collapsible group: the header toggles it; a search opens every group. -->
+                                <GroupStyle.ContainerStyle>
+                                    <Style TargetType="GroupItem">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="GroupItem">
+                                                    <StackPanel>
+                                                        <Button Style="{StaticResource NavButton}" Padding="4,5" Margin="0,8,0,2"
+                                                                Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                                CommandParameter="{Binding Name}" AutomationProperties.Name="{Binding Name}">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="18" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Style="{StaticResource Icon}" FontSize="9" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                                    <TextBlock.Text>
+                                                                        <MultiBinding Converter="{StaticResource GroupExpanded}">
+                                                                            <Binding Path="Name" />
+                                                                            <Binding Path="DataContext.CollapsedGroups" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                            <Binding Path="DataContext.SidebarFilter.SearchText" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                        </MultiBinding>
+                                                                    </TextBlock.Text>
+                                                                </TextBlock>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource MutedText}" FontWeight="SemiBold" />
+                                                                <TextBlock Grid.Column="2" Text="{Binding ItemCount}" Style="{StaticResource MutedText}" FontSize="11" Margin="6,0,4,0" />
+                                                            </Grid>
+                                                        </Button>
+                                                        <ItemsPresenter>
+                                                            <ItemsPresenter.Visibility>
+                                                                <MultiBinding Converter="{StaticResource GroupExpanded}">
+                                                                    <Binding Path="Name" />
+                                                                    <Binding Path="DataContext.CollapsedGroups" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                    <Binding Path="DataContext.SidebarFilter.SearchText" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                </MultiBinding>
+                                                            </ItemsPresenter.Visibility>
+                                                        </ItemsPresenter>
+                                                    </StackPanel>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </GroupStyle.ContainerStyle>
+                            </GroupStyle>
+                        </ListBox.GroupStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ProjectListItemViewModel}">
+                                <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" Background="Transparent">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="7" Height="7" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" HorizontalAlignment="Left" ToolTip="{Binding Status}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding OpenCount}" Style="{StaticResource MutedText}" Margin="6,0,0,0" />
+                                    <Grid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Archive / unarchive" Command="{Binding PlacementTarget.Tag.ArchiveProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Export to TXT…" Command="{Binding PlacementTarget.Tag.ExportProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <Separator />
+                                            <MenuItem Header="Delete…" Command="{Binding PlacementTarget.Tag.DeleteProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                        </ContextMenu>
+                                    </Grid.ContextMenu>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Text="No projects to show." Style="{StaticResource MutedText}" Margin="10,8" VerticalAlignment="Top"
+                               Visibility="{Binding NothingToShow, Converter={StaticResource BoolToVis}}" />
+                </Grid>
             </DockPanel>
         </Border>
 

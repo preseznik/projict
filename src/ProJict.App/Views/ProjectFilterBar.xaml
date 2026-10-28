@@ -1,0 +1,74 @@
+<UserControl x:Class="ProJict.App.Views.ProjectFilterBar"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ProJict.App.ViewModels">
+    <!-- Search box plus a dropdown of check boxes that show or hide projects; DataContext is a ProjectFilterViewModel. -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <Grid>
+            <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Filter projects" Padding="10,5,28,6">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Escape" Command="{Binding ClearSearchCommand}" />
+                    <KeyBinding Key="Return" Command="{Binding AcceptCommand}" />
+                </TextBox.InputBindings>
+            </TextBox>
+            <TextBlock Text="Filter projects" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                       Visibility="{Binding SearchText, Converter={StaticResource InvEmptyToVis}}" />
+            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE711;" FontSize="10" Padding="5" Margin="0,0,4,0" HorizontalAlignment="Right"
+                    AutomationProperties.Name="Clear filter" ToolTip="Clear (Esc)" Command="{Binding ClearSearchCommand}"
+                    Visibility="{Binding IsSearching, Converter={StaticResource BoolToVis}}" />
+        </Grid>
+
+        <ToggleButton x:Name="DropDownToggle" Grid.Column="1" Style="{StaticResource SubtleToggle}" Margin="4,0,0,0" Padding="7,6"
+                      AutomationProperties.Name="Show or hide projects" ToolTip="Show or hide projects"
+                      IsHitTestVisible="{Binding IsOpen, ElementName=DropDown, Converter={StaticResource InvBool}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource Icon}" Text="&#xE890;" />
+                <TextBlock Text="{Binding HiddenCount, StringFormat={}{0} hidden}" Style="{StaticResource MutedText}" Margin="6,0,0,0"
+                           Visibility="{Binding HasHidden, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Style="{StaticResource Icon}" Text="&#xE70D;" FontSize="9" Margin="6,1,0,0" />
+            </StackPanel>
+        </ToggleButton>
+
+        <Popup x:Name="DropDown" IsOpen="{Binding IsChecked, ElementName=DropDownToggle, Mode=TwoWay}" StaysOpen="False"
+               PlacementTarget="{Binding ElementName=DropDownToggle}" Placement="Bottom" AllowsTransparency="True" PopupAnimation="Fade">
+            <Border Background="{DynamicResource SolidBackgroundFillColorQuarternaryBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorFlyoutBrush}"
+                    BorderThickness="1" CornerRadius="8" Padding="6" Margin="0,4,0,0" MinWidth="240" MaxWidth="360">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,4">
+                        <Button Style="{StaticResource SubtleButton}" Content="Show all" Command="{Binding ShowAllCommand}" />
+                        <Button Style="{StaticResource SubtleButton}" Content="Hide all" Command="{Binding HideAllCommand}" Margin="4,0,0,0" />
+                    </StackPanel>
+                    <Border DockPanel.Dock="Top" Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,0,0,4" />
+                    <ScrollViewer MaxHeight="460" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Groups}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ProjectToggleGroupViewModel}">
+                                    <StackPanel Margin="0,2,0,4">
+                                        <CheckBox IsChecked="{Binding AllShown}" AutomationProperties.Name="{Binding Name}" MinHeight="28" Padding="8,0,0,0" Margin="6,0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        </CheckBox>
+                                        <ItemsControl ItemsSource="{Binding Items}" Margin="20,0,0,0" Focusable="False">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:ProjectToggleViewModel}">
+                                                    <CheckBox IsChecked="{Binding IsShown}" AutomationProperties.Name="{Binding Name}" MinHeight="28" Padding="8,0,0,0" Margin="6,0">
+                                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                                    </CheckBox>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Popup>
+    </Grid>
+</UserControl>

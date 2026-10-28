@@ -13,6 +13,7 @@
     <local:EmptyToVisibilityConverter x:Key="InvEmptyToVis" Invert="True" />
     <local:StatusToBrushConverter x:Key="StatusToBrush" />
     <local:TagToBrushConverter x:Key="TagToBrush" />
+    <local:GroupExpandedConverter x:Key="GroupExpanded" />
 
     <Style x:Key="MutedText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />

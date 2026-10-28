@@ -7,17 +7,17 @@ using CommunityToolkit.Mvvm.Input;
 using ProJict.App.Views;
 using ProJict.Core.Features;
 using ProJict.Core.Model;
+using ProJict.Core.Storage;
 
 namespace ProJict.App.ViewModels;
 
-public sealed partial class ProjectListItemViewModel(Project project, Func<string, int> groupOrder) : ObservableObject
+public sealed partial class ProjectListItemViewModel(Project project, WorkspaceSettings settings) : ObservableObject
 {
     public Project Project { get; } = project;
     public string Name => Project.Name;
     public ProjectStatus Status => Project.Status;
-    public string DisplayGroup => Project.Status == ProjectStatus.Archived ? "Archived"
-        : string.IsNullOrWhiteSpace(Project.Group) ? "Personal" : Project.Group;
-    public int GroupOrder => Project.Status == ProjectStatus.Archived ? int.MaxValue : groupOrder(DisplayGroup);
+    public string DisplayGroup => ProjectGroups.Of(Project);
+    public int GroupOrder => ProjectGroups.Order(Project, settings);
     public int OpenCount => Project.Categories.Sum(c => c.Items.Count(i => !i.IsDone));
 
     public void Refresh() => OnPropertyChanged(string.Empty);
@@ -40,6 +40,18 @@ public sealed partial class MainViewModel : ObservableObject
         ProjectsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ProjectListItemViewModel.DisplayGroup)));
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.GroupOrder), ListSortDirection.Ascending));
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.Name), ListSortDirection.Ascending));
+        SidebarFilter = new ProjectFilterViewModel(state, state.Settings.SidebarHiddenProjects);
+        ProjectsView.Filter = o => o is ProjectListItemViewModel i && SidebarFilter.Matches(i.Project);
+        SidebarFilter.Changed += () =>
+        {
+            ProjectsView.Refresh();
+            SyncSelection();
+            OnPropertyChanged(nameof(NothingToShow));
+        };
+        SidebarFilter.Accepted += () =>
+        {
+            if (ProjectsView.OfType<ProjectListItemViewModel>().FirstOrDefault() is { } first) OpenProject(first.Project);
+        };
         RebuildList();
 
         state.ProjectListChanged += RebuildList;
@@ -59,6 +71,11 @@ public sealed partial class MainViewModel : ObservableObject
     public DashboardViewModel Dashboard { get; }
     public ObservableCollection<ProjectListItemViewModel> ProjectItems { get; } = [];
     public ICollectionView ProjectsView { get; }
+    public ProjectFilterViewModel SidebarFilter { get; }
+    public bool NothingToShow => ProjectItems.Count > 0 && ProjectsView.IsEmpty;
+
+    /// <summary>Replaced (not mutated) on every toggle, so the group headers' bindings update.</summary>
+    public IReadOnlyList<string> CollapsedGroups => State.Settings.CollapsedGroups;
     public int InboxCount => State.Inbox.Categories.Sum(c => c.Items.Count(i => !i.IsDone));
 
     [ObservableProperty] private object? _currentView;
@@ -80,18 +97,35 @@ public sealed partial class MainViewModel : ObservableObject
         var selected = SelectedProjectItem?.Project;
         _syncingSelection = true;
         ProjectItems.Clear();
-        foreach (var project in State.Projects.Where(p => !p.IsInbox))
-            ProjectItems.Add(new ProjectListItemViewModel(project, GroupOrder));
+        var projects = State.Projects.Where(p => !p.IsInbox).ToList();
+        SidebarFilter.Rebuild(projects);
+        foreach (var project in projects)
+            ProjectItems.Add(new ProjectListItemViewModel(project, State.Settings));
         SelectedProjectItem = ProjectItems.FirstOrDefault(i => i.Project == selected);
         _syncingSelection = false;
         OnPropertyChanged(nameof(InboxCount));
+        OnPropertyChanged(nameof(NothingToShow));
         if (CurrentView is DashboardViewModel) Dashboard.Refresh();
     }
 
-    private int GroupOrder(string group)
+    /// <summary>Re-selects the open project in the sidebar after the filter hid and showed it again.</summary>
+    private void SyncSelection()
     {
-        var i = State.Settings.Groups.FindIndex(g => string.Equals(g, group, StringComparison.OrdinalIgnoreCase));
-        return i < 0 ? 1000 : i;
+        _syncingSelection = true;
+        SelectedProjectItem = CurrentProject is { IsInbox: false } current ? ProjectItems.FirstOrDefault(i => i.Project == current.Project) : null;
+        _syncingSelection = false;
+    }
+
+    [RelayCommand]
+    private void ToggleGroup(string? group)
+    {
+        if (string.IsNullOrEmpty(group)) return;
+        var collapsed = State.Settings.CollapsedGroups;
+        State.Settings.CollapsedGroups = collapsed.Contains(group, StringComparer.OrdinalIgnoreCase)
+            ? collapsed.Where(g => !string.Equals(g, group, StringComparison.OrdinalIgnoreCase)).ToList()
+            : [.. collapsed, group];
+        State.MarkSettingsDirty();
+        OnPropertyChanged(nameof(CollapsedGroups));
     }
 
     public ProjectViewModel GetProjectViewModel(Project project)

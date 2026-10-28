@@ -29,11 +29,29 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
 
 public sealed record RecentDoneRow(string ProjectName, string CategoryName, string Text, string When, Project Project, TodoItem Item);
 
-public sealed partial class DashboardViewModel(AppState state, MainViewModel main) : ObservableObject
+public sealed partial class DashboardViewModel : ObservableObject
 {
     public const string AllGroups = "All groups";
     public const string NotArchived = "All but archived";
     public const string AnyStatus = "Any status";
+
+    private readonly AppState _state;
+    private readonly MainViewModel _main;
+
+    public DashboardViewModel(AppState state, MainViewModel main)
+    {
+        _state = state;
+        _main = main;
+        Filter = new ProjectFilterViewModel(state, state.Settings.DashboardHiddenProjects);
+        Filter.Changed += Refresh;
+        Filter.Accepted += () =>
+        {
+            if (Cards.FirstOrDefault() is { } first) main.OpenProject(first.Project);
+        };
+    }
+
+    /// <summary>Search box and show/hide dropdown; hidden projects also leave the summary and the done feed.</summary>
+    public ProjectFilterViewModel Filter { get; }
 
     public List<ProjectCardViewModel> Cards { get; private set; } = [];
     public List<RecentDoneRow> RecentDone { get; private set; } = [];
@@ -52,15 +70,17 @@ public sealed partial class DashboardViewModel(AppState state, MainViewModel mai
 
     public void Refresh()
     {
-        var projects = state.Projects.Where(p => !p.IsInbox).ToList();
-        GroupFilters = [AllGroups, .. state.Settings.Groups.Union(projects.Select(p => p.Group).Where(g => !string.IsNullOrWhiteSpace(g)), StringComparer.OrdinalIgnoreCase)];
+        var projects = _state.Projects.Where(p => !p.IsInbox).ToList();
+        Filter.Rebuild(projects);
+        GroupFilters = [AllGroups, .. _state.Settings.Groups.Union(projects.Select(p => p.Group).Where(g => !string.IsNullOrWhiteSpace(g)), StringComparer.OrdinalIgnoreCase)];
         OnPropertyChanged(nameof(GroupFilters));
 
-        var filtered = projects.Where(p =>
+        var shown = projects.Where(p => !Filter.IsHidden(p)).ToList();
+        var filtered = shown.Where(p => Filter.MatchesSearch(p) &&
             (GroupFilter == AllGroups || string.Equals(p.Group, GroupFilter, StringComparison.OrdinalIgnoreCase)) &&
             (StatusFilter == AnyStatus || (StatusFilter == NotArchived ? p.Status != ProjectStatus.Archived : p.Status.ToString() == StatusFilter)));
 
-        var cards = filtered.Select(p => new ProjectCardViewModel(p, PortfolioStats.For(p), state.Settings.StaleDays, main));
+        var cards = filtered.Select(p => new ProjectCardViewModel(p, PortfolioStats.For(p), _state.Settings.StaleDays, _main));
         Cards = (Sort switch
         {
             "Name" => cards.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase),
@@ -70,20 +90,20 @@ public sealed partial class DashboardViewModel(AppState state, MainViewModel mai
         }).ToList();
         OnPropertyChanged(nameof(Cards));
 
-        RecentDone = PortfolioStats.RecentlyDone(state.Projects, DateTime.Now.AddDays(-7))
+        RecentDone = PortfolioStats.RecentlyDone(_state.Projects.Where(p => !Filter.IsHidden(p)), DateTime.Now.AddDays(-7))
             .Take(40)
             .Select(r => new RecentDoneRow(r.Project.Name, r.Category.Name, r.Item.DisplayText().Replace("\n", " "), Ago(r.Item.DoneAt ?? DateTime.Now), r.Project, r.Item))
             .ToList();
         OnPropertyChanged(nameof(RecentDone));
 
-        var all = projects.Where(p => p.Status != ProjectStatus.Archived).Select(PortfolioStats.For).ToList();
+        var all = shown.Where(p => p.Status != ProjectStatus.Archived).Select(PortfolioStats.For).ToList();
         Summary = $"{all.Count} projects · {all.Sum(s => s.Open)} open items · {all.Sum(s => s.InProgress)} in progress · {RecentDone.Count} done this week";
     }
 
     [RelayCommand]
     private void OpenRecent(RecentDoneRow? row)
     {
-        if (row != null) main.OpenProject(row.Project).Reveal(row.Item);
+        if (row != null) _main.OpenProject(row.Project).Reveal(row.Item);
     }
 
     public static string Ago(DateTime when)

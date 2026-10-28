@@ -51,6 +51,7 @@ HUD
 
 ## More
 
+- **Finding projects**: type in **Filter projects** above the sidebar list or on the dashboard to narrow it down. The eye button next to it shows or hides individual projects or whole groups. The sidebar and the dashboard each remember their own choice. Click a group heading (Personal, Work, …) to collapse it.
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.
 - **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link and your own standing instructions (set in **Details**).

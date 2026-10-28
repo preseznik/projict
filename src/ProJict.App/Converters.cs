@@ -83,3 +83,24 @@ public sealed class TagToBrushConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>
+/// Whether a sidebar group is open, from [group name, collapsed group names, search text]; a search opens every group.
+/// Returns Visibility, a chevron glyph or a bool, depending on the target property.
+/// </summary>
+public sealed class GroupExpandedConverter : IMultiValueConverter
+{
+    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var name = values.ElementAtOrDefault(0) as string;
+        var collapsed = values.ElementAtOrDefault(1) as IEnumerable<string> ?? [];
+        var searching = !string.IsNullOrWhiteSpace(values.ElementAtOrDefault(2) as string);
+        var expanded = searching || name == null || !collapsed.Contains(name, StringComparer.OrdinalIgnoreCase);
+        if (targetType == typeof(Visibility)) return expanded ? Visibility.Visible : Visibility.Collapsed;
+        if (targetType == typeof(string)) return expanded ? "" : "";
+        return expanded;
+    }
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

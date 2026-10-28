@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2 (2026-10-28)
+
+- Filter box and show/hide list for projects in the sidebar and on the dashboard.
+- Collapsible project groups in the sidebar.
+
 ## 0.1.1 (2026-10-28)
 
 First public release.

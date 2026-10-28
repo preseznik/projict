@@ -71,6 +71,12 @@ public sealed class WorkspaceSettings
     public bool MarkCopiedInProgress { get; set; }
     public Guid? LastCaptureProjectId { get; set; }
     public string? LastCaptureCategory { get; set; }
+    /// <summary>Projects left out of the sidebar list (shown again from its show/hide dropdown).</summary>
+    public List<Guid> SidebarHiddenProjects { get; set; } = [];
+    /// <summary>Projects left out of the dashboard.</summary>
+    public List<Guid> DashboardHiddenProjects { get; set; } = [];
+    /// <summary>Sidebar groups the user collapsed.</summary>
+    public List<string> CollapsedGroups { get; set; } = [];
 
     /// <summary>The last export folder, else "ProJict-export" next to the data folder.</summary>
     public string DefaultExportFolder(string dataRoot) =>
