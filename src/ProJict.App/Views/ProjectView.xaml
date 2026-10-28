@@ -241,6 +241,9 @@
                         <ToggleButton DockPanel.Dock="Left" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Side by side" IsChecked="{Binding SideBySide}" Margin="4,0,0,0" ToolTip="TODO and DONE columns side by side">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE89A;" /><TextBlock Text="Side by side" Margin="6,0,0,0" /></StackPanel>
                         </ToggleButton>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource SubtleButton}" AutomationProperties.Name="{Binding ToggleAllText}" Command="{Binding ToggleAllCategoriesCommand}" Margin="4,0,0,0" ToolTip="Fold or unfold every category">
+                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleAllGlyph}" /><TextBlock Text="{Binding ToggleAllText}" Margin="6,0,0,0" /></StackPanel>
+                        </Button>
 
                         <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" AutomationProperties.Name="Add category" Command="{Binding AddCategoryCommand}" ToolTip="New category">
                             <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="Category" Margin="6,0,0,0" /></StackPanel>

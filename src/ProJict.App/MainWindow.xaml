@@ -156,8 +156,19 @@
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2" Text="{Binding OpenCount}" Style="{StaticResource MutedText}" Margin="6,0,0,0" />
                                     <Grid.ContextMenu>
-                                        <ContextMenu>
+                                        <ContextMenu Opened="ProjectMenu_Opened">
                                             <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Hide from list" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Copy categories from" ItemsSource="{Binding TemplateSources}" Click="CopyCategoriesMenu_Click"
+                                                      ToolTip="Adds the other project's categories (not its items) that this one doesn't have yet">
+                                                <MenuItem.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:TemplateSourceViewModel}">
+                                                        <TextBlock>
+                                                            <Run Text="{Binding Name, Mode=OneWay}" /><Run Text="{Binding Detail, Mode=OneWay, StringFormat='  ·  {0}'}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                        </TextBlock>
+                                                    </DataTemplate>
+                                                </MenuItem.ItemTemplate>
+                                            </MenuItem>
                                             <MenuItem Header="Archive / unarchive" Command="{Binding PlacementTarget.Tag.ArchiveProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
                                             <MenuItem Header="Export to TXT…" Command="{Binding PlacementTarget.Tag.ExportProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
                                             <Separator />

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
 using ProJict.App.ViewModels;
 
 namespace ProJict.App;
@@ -57,6 +58,17 @@ public partial class MainWindow : Window
             return;
         }
         base.OnClosing(e);
+    }
+
+    private void ProjectMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ProjectListItemViewModel item }) item.RefreshTemplateSources();
+    }
+
+    /// <summary>A project picked under "Copy categories from" (the click bubbles up from the generated sub-item).</summary>
+    private void CopyCategoriesMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is MenuItem { DataContext: TemplateSourceViewModel source }) source.Copy();
     }
 
     protected override void OnClosed(EventArgs e)

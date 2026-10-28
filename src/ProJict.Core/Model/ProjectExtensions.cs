@@ -55,6 +55,23 @@ public static class ProjectExtensions
         return created;
     }
 
+    /// <summary>
+    /// Uses another project as a template: adds its categories (name and description, no items) that this project
+    /// doesn't have yet, in the source's order, after the existing ones.
+    /// </summary>
+    public static List<Category> CopyCategoriesFrom(this Project project, Project source)
+    {
+        var added = new List<Category>();
+        foreach (var category in source.Categories)
+        {
+            if (project.FindCategory(category.Name) != null) continue;
+            var copy = new Category { Name = category.Name, Description = category.Description };
+            project.Categories.Add(copy);
+            added.Add(copy);
+        }
+        return added;
+    }
+
     public static bool CategoryNamesEqual(string a, string b) =>
         string.Equals(NormalizeCategory(a), NormalizeCategory(b), StringComparison.OrdinalIgnoreCase);
 

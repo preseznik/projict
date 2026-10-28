@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.3 (2026-10-28)
+
+- Right-click a project in the sidebar or on the dashboard to hide it.
+- Right-click a project and choose "Copy categories from" to reuse another project's categories (without its items). Ctrl+Z undoes it.
+- "Collapse all" / "Expand all" button above a project's categories.
+
 ## 0.1.2 (2026-10-28)
 
 - Filter box and show/hide list for projects in the sidebar and on the dashboard.

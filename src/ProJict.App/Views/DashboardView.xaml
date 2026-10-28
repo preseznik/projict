@@ -44,6 +44,12 @@
                                 <Border.InputBindings>
                                     <MouseBinding MouseAction="LeftClick" Command="{Binding OpenCommand}" />
                                 </Border.InputBindings>
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Open" Command="{Binding OpenCommand}" />
+                                        <MenuItem Header="Hide from dashboard" Command="{Binding HideCommand}" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
                                 <StackPanel>
                                     <Grid>
                                         <Grid.ColumnDefinitions>

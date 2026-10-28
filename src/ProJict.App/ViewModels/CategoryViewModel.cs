@@ -56,6 +56,7 @@ public sealed partial class CategoryViewModel : ObservableObject
             Model.Collapsed = !value;
             Owner.Touch();
             OnPropertyChanged();
+            Owner.OnCategoryExpandedChanged();
         }
     }
 

@@ -25,6 +25,13 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
     public string? Description => Project.Description;
 
     [RelayCommand] private void Open() => main.OpenProject(Project);
+
+    [RelayCommand]
+    private void Hide()
+    {
+        main.Dashboard.Filter.SetShown([Project], false);
+        main.State.StatusText = $"Hid {Name} from the dashboard. The eye button next to the filter shows it again.";
+    }
 }
 
 public sealed record RecentDoneRow(string ProjectName, string CategoryName, string Text, string When, Project Project, TodoItem Item);

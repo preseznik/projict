@@ -164,6 +164,25 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public void Touch() => _state.MarkDirty(Project);
 
+    /// <summary>True when every category is folded; the board's toggle then offers "Expand all".</summary>
+    public bool AllCollapsed => Categories.Count > 0 && Categories.All(c => !c.IsExpanded);
+    public string ToggleAllText => AllCollapsed ? "Expand all" : "Collapse all";
+    public string ToggleAllGlyph => AllCollapsed ? "\uE70D" : "\uE70E";
+
+    [RelayCommand]
+    private void ToggleAllCategories()
+    {
+        var expand = AllCollapsed;
+        foreach (var category in Categories) category.IsExpanded = expand;
+    }
+
+    public void OnCategoryExpandedChanged()
+    {
+        OnPropertyChanged(nameof(AllCollapsed));
+        OnPropertyChanged(nameof(ToggleAllText));
+        OnPropertyChanged(nameof(ToggleAllGlyph));
+    }
+
     public void RebuildAll()
     {
         var existing = Categories.ToDictionary(c => c.Model);
@@ -177,6 +196,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         TagFilters = [AllTags, NoTag, .. TagChoices.Union(Project.Walk().Select(l => l.Item.Tag).OfType<string>(), StringComparer.OrdinalIgnoreCase)];
         OnPropertyChanged(nameof(TagFilters));
         ApplyFilter();
+        OnCategoryExpandedChanged();
     }
 
     public void ApplyFilter()
@@ -571,6 +591,17 @@ public sealed partial class ProjectViewModel : ObservableObject
         Touch();
         RebuildAll();
         if (CategoryFor(category) is { } vm) FocusAddItemRequested?.Invoke(vm);
+    }
+
+    /// <summary>Adds the categories of another project that this one lacks (without items) as one undo step.</summary>
+    public int CopyCategoriesFrom(Project source)
+    {
+        if (source.Categories.All(c => Project.FindCategory(c.Name) != null)) return 0;
+        Checkpoint();
+        var added = Project.CopyCategoriesFrom(source);
+        Touch();
+        RebuildAll();
+        return added.Count;
     }
 
     public void DeleteCategory(CategoryViewModel category)

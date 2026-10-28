@@ -7,23 +7,36 @@ using CommunityToolkit.Mvvm.Input;
 using ProJict.App.Views;
 using ProJict.Core.Features;
 using ProJict.Core.Model;
-using ProJict.Core.Storage;
 
 namespace ProJict.App.ViewModels;
 
-public sealed partial class ProjectListItemViewModel(Project project, WorkspaceSettings settings) : ObservableObject
+public sealed partial class ProjectListItemViewModel(Project project, MainViewModel main) : ObservableObject
 {
     public Project Project { get; } = project;
     public string Name => Project.Name;
     public ProjectStatus Status => Project.Status;
     public string DisplayGroup => ProjectGroups.Of(Project);
-    public int GroupOrder => ProjectGroups.Order(Project, settings);
+    public int GroupOrder => ProjectGroups.Order(Project, main.State.Settings);
     public int OpenCount => Project.Categories.Sum(c => c.Items.Count(i => !i.IsDone));
+
+    /// <summary>Projects offered under "Copy categories from" in the right-click menu.</summary>
+    public List<TemplateSourceViewModel> TemplateSources => main.TemplateSourcesFor(Project);
 
     public void Refresh() => OnPropertyChanged(string.Empty);
 
+    /// <summary>Called when the right-click menu opens, so category counts are current.</summary>
+    public void RefreshTemplateSources() => OnPropertyChanged(nameof(TemplateSources));
+
     /// <summary>Used as the accessible name of the sidebar entry.</summary>
     public override string ToString() => Name;
+}
+
+/// <summary>A project whose categories can be copied into another one.</summary>
+public sealed class TemplateSourceViewModel(Project source, Action<Project> copy)
+{
+    public string Name => source.Name;
+    public string Detail => source.Categories.Count == 1 ? "1 category" : $"{source.Categories.Count} categories";
+    public void Copy() => copy(source);
 }
 
 public sealed partial class MainViewModel : ObservableObject
@@ -100,7 +113,7 @@ public sealed partial class MainViewModel : ObservableObject
         var projects = State.Projects.Where(p => !p.IsInbox).ToList();
         SidebarFilter.Rebuild(projects);
         foreach (var project in projects)
-            ProjectItems.Add(new ProjectListItemViewModel(project, State.Settings));
+            ProjectItems.Add(new ProjectListItemViewModel(project, this));
         SelectedProjectItem = ProjectItems.FirstOrDefault(i => i.Project == selected);
         _syncingSelection = false;
         OnPropertyChanged(nameof(InboxCount));
@@ -228,6 +241,34 @@ public sealed partial class MainViewModel : ObservableObject
         var name = InputDialog.Ask(Application.Current.MainWindow!, "Rename project", "Project name:", item.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
         GetProjectViewModel(item.Project).Name = name.Trim();
+    }
+
+    [RelayCommand]
+    private void HideProject(ProjectListItemViewModel? item)
+    {
+        if (item == null) return;
+        SidebarFilter.SetShown([item.Project], false);
+        State.StatusText = $"Hid {item.Name} from the list. The eye button above the list shows it again.";
+    }
+
+    public List<TemplateSourceViewModel> TemplateSourcesFor(Project target) =>
+        State.Projects
+            .Where(p => !p.IsInbox && p != target && p.Categories.Count > 0)
+            .OrderBy(p => ProjectGroups.Order(p, State.Settings))
+            .ThenBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(p => new TemplateSourceViewModel(p, source => CopyCategories(target, source)))
+            .ToList();
+
+    /// <summary>Opens the target project and adds the source's categories it lacks (undoable there).</summary>
+    public void CopyCategories(Project target, Project source)
+    {
+        var added = OpenProject(target).CopyCategoriesFrom(source);
+        State.StatusText = added switch
+        {
+            0 => $"{target.Name} already has all of {source.Name}'s categories.",
+            1 => $"Copied 1 category from {source.Name} (Ctrl+Z undoes it).",
+            _ => $"Copied {added} categories from {source.Name} (Ctrl+Z undoes it).",
+        };
     }
 
     [RelayCommand]
