@@ -87,6 +87,7 @@
 
                 <UniformGrid DockPanel.Dock="Bottom" Rows="1" Margin="0,8,0,0">
                     <Button Style="{StaticResource SubtleIconButton}" Content="&#xE710;" AutomationProperties.Name="New project" ToolTip="New project (Ctrl+Shift+N)" Command="{Binding NewProjectCommand}" />
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8F4;" AutomationProperties.Name="New group" ToolTip="New group (right-click a group heading to rename or delete it)" Command="{Binding NewGroupCommand}" />
                     <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8B5;" AutomationProperties.Name="Import" ToolTip="Import TXT files…" Command="{Binding ImportCommand}" />
                     <Button Style="{StaticResource SubtleIconButton}" Content="&#xEDE1;" AutomationProperties.Name="Export" ToolTip="Export to TXT… (Ctrl+E)" Command="{Binding ExportCommand}" />
                     <Button Style="{StaticResource SubtleIconButton}" Content="&#xE713;" AutomationProperties.Name="Settings" ToolTip="Settings" Command="{Binding OpenSettingsCommand}" />
@@ -107,7 +108,15 @@
                                                     <StackPanel>
                                                         <Button Style="{StaticResource NavButton}" Padding="4,5" Margin="0,8,0,2"
                                                                 Command="{Binding DataContext.ToggleGroupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                                CommandParameter="{Binding Name}" AutomationProperties.Name="{Binding Name}">
+                                                                CommandParameter="{Binding Name}" AutomationProperties.Name="{Binding Name}"
+                                                                Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}">
+                                                            <Button.ContextMenu>
+                                                                <ContextMenu>
+                                                                    <MenuItem Header="New group…" Command="{Binding PlacementTarget.Tag.NewGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                                                    <MenuItem Header="Rename group…" Command="{Binding PlacementTarget.Tag.RenameGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}" />
+                                                                    <MenuItem Header="Delete group…" Command="{Binding PlacementTarget.Tag.DeleteGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}" />
+                                                                </ContextMenu>
+                                                            </Button.ContextMenu>
                                                             <Grid>
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="18" />
@@ -159,6 +168,16 @@
                                         <ContextMenu Opened="ProjectMenu_Opened">
                                             <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
                                             <MenuItem Header="Hide from list" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Move to group" ItemsSource="{Binding GroupChoices}" Click="MoveToGroupMenu_Click">
+                                                <MenuItem.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:GroupChoiceViewModel}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="12" Width="22" HorizontalAlignment="Left" TextAlignment="Left" />
+                                                            <TextBlock Text="{Binding Label}" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </MenuItem.ItemTemplate>
+                                            </MenuItem>
                                             <MenuItem Header="Copy categories from" ItemsSource="{Binding TemplateSources}" Click="CopyCategoriesMenu_Click"
                                                       ToolTip="Adds the other project's categories (not its items) that this one doesn't have yet">
                                                 <MenuItem.ItemTemplate>

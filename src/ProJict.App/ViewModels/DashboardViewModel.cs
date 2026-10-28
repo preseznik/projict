@@ -81,6 +81,11 @@ public sealed partial class DashboardViewModel : ObservableObject
         Filter.Rebuild(projects);
         GroupFilters = [AllGroups, .. _state.Settings.Groups.Union(projects.Select(p => p.Group).Where(g => !string.IsNullOrWhiteSpace(g)), StringComparer.OrdinalIgnoreCase)];
         OnPropertyChanged(nameof(GroupFilters));
+        if (!GroupFilters.Contains(GroupFilter, StringComparer.OrdinalIgnoreCase))
+        {
+            GroupFilter = AllGroups; // its group was deleted; this refreshes again
+            return;
+        }
 
         var shown = projects.Where(p => !Filter.IsHidden(p)).ToList();
         var filtered = shown.Where(p => Filter.MatchesSearch(p) &&

@@ -9,10 +9,12 @@ namespace ProJict.App.ViewModels;
 /// <summary>How projects are grouped in the sidebar and in the show/hide dropdowns.</summary>
 public static class ProjectGroups
 {
-    public const string Archived = "Archived";
+    public const string Archived = WorkspaceSettings.ArchivedGroup;
 
     public static string Of(Project project) => project.Status == ProjectStatus.Archived ? Archived
-        : string.IsNullOrWhiteSpace(project.Group) ? "Personal" : project.Group;
+        : string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group.Trim();
+
+    public static bool Same(string? a, string? b) => string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Groups follow the order in the workspace settings; archived projects come last.</summary>
     public static int Order(Project project, WorkspaceSettings settings)

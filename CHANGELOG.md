@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 (2026-10-28)
+
+- Your own project groups next to Personal and Work: add them with the new folder button under the sidebar, rename or delete them by right-clicking their heading. Deleting a group moves its projects to Personal.
+- Right-click a project › Move to group, including straight into a new group.
+- New groups show in the sidebar even while they're empty.
+
 ## 0.1.3 (2026-10-28)
 
 - Right-click a project in the sidebar or on the dashboard to hide it.

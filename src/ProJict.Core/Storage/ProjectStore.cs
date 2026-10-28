@@ -66,6 +66,8 @@ public sealed class ProjectStore
             }
         }
 
+        settings.EnsureDefaultGroups();
+
         if (!projects.Any(p => p.IsInbox))
         {
             var inbox = Project.CreateInbox();

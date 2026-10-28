@@ -59,7 +59,7 @@
             <TextBlock Grid.Row="1" Text="Stale after (days)" VerticalAlignment="Center" Margin="0,8,0,0" />
             <TextBox x:Name="StaleDays" Grid.Row="1" Grid.Column="1" Width="80" HorizontalAlignment="Left" Margin="0,8,0,0" />
             <TextBlock Grid.Row="2" Text="Groups" VerticalAlignment="Center" Margin="0,8,0,0" />
-            <TextBox x:Name="Groups" Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" ToolTip="Comma separated, in sidebar order" />
+            <TextBox x:Name="Groups" Grid.Row="2" Grid.Column="1" Margin="0,8,0,0" ToolTip="Comma separated, in sidebar order. Personal and Work always stay." />
             <TextBlock Grid.Row="3" Text="VS Code (Code.exe)" VerticalAlignment="Center" Margin="0,8,0,0" />
             <DockPanel Grid.Row="3" Grid.Column="1" Margin="0,8,0,0">
                 <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="BrowseCode_Click" />

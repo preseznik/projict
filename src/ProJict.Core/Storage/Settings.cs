@@ -54,8 +54,14 @@ public sealed class ExportOptions
 /// <summary>Workspace-wide settings stored next to the data (workspace.json).</summary>
 public sealed class WorkspaceSettings
 {
+    public const string PersonalGroup = "Personal";
+    public const string WorkGroup = "Work";
+    /// <summary>Not a real group: the sidebar section for archived projects.</summary>
+    public const string ArchivedGroup = "Archived";
+
     public List<Guid> ProjectOrder { get; set; } = [];
-    public List<string> Groups { get; set; } = ["Personal", "Work"];
+    /// <summary>Sidebar groups in order. Personal and Work are always there; the rest can be added and removed.</summary>
+    public List<string> Groups { get; set; } = [PersonalGroup, WorkGroup];
     public string? ExportFolder { get; set; }
     public ExportOptions Export { get; set; } = new();
     public bool MirrorEnabled { get; set; }
@@ -77,6 +83,19 @@ public sealed class WorkspaceSettings
     public List<Guid> DashboardHiddenProjects { get; set; } = [];
     /// <summary>Sidebar groups the user collapsed.</summary>
     public List<string> CollapsedGroups { get; set; } = [];
+
+    public static bool IsDefaultGroup(string? name) =>
+        string.Equals(name?.Trim(), PersonalGroup, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name?.Trim(), WorkGroup, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Puts Personal and Work back if a hand-edited workspace.json dropped them, and drops blanks and duplicates.</summary>
+    public void EnsureDefaultGroups()
+    {
+        Groups = Groups.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (!Groups.Contains(WorkGroup, StringComparer.OrdinalIgnoreCase)) Groups.Insert(0, WorkGroup);
+        if (!Groups.Contains(PersonalGroup, StringComparer.OrdinalIgnoreCase)) Groups.Insert(0, PersonalGroup);
+    }
 
     /// <summary>The last export folder, else "ProJict-export" next to the data folder.</summary>
     public string DefaultExportFolder(string dataRoot) =>

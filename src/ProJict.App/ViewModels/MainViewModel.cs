@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 using ProJict.App.Views;
 using ProJict.Core.Features;
 using ProJict.Core.Model;
+using ProJict.Core.Storage;
 
 namespace ProJict.App.ViewModels;
 
@@ -22,10 +23,17 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     /// <summary>Projects offered under "Copy categories from" in the right-click menu.</summary>
     public List<TemplateSourceViewModel> TemplateSources => main.TemplateSourcesFor(Project);
 
+    /// <summary>Groups offered under "Move to group" in the right-click menu.</summary>
+    public List<GroupChoiceViewModel> GroupChoices => main.GroupChoicesFor(Project);
+
     public void Refresh() => OnPropertyChanged(string.Empty);
 
-    /// <summary>Called when the right-click menu opens, so category counts are current.</summary>
-    public void RefreshTemplateSources() => OnPropertyChanged(nameof(TemplateSources));
+    /// <summary>Called when the right-click menu opens, so its submenus are current.</summary>
+    public void RefreshMenu()
+    {
+        OnPropertyChanged(nameof(TemplateSources));
+        OnPropertyChanged(nameof(GroupChoices));
+    }
 
     /// <summary>Used as the accessible name of the sidebar entry.</summary>
     public override string ToString() => Name;
@@ -39,9 +47,20 @@ public sealed class TemplateSourceViewModel(Project source, Action<Project> copy
     public void Copy() => copy(source);
 }
 
+/// <summary>An entry under "Move to group": an existing group, or "New group…" when the name is null.</summary>
+public sealed class GroupChoiceViewModel(string? name, bool isCurrent, Action choose)
+{
+    public string Label => name ?? "New group…";
+    public string Glyph => isCurrent ? "\uE73E" : name == null ? "\uE710" : "";
+    public void Choose() => choose();
+}
+
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly Dictionary<Guid, ProjectViewModel> _projectViewModels = [];
+    private readonly PropertyGroupDescription _groupDescription =
+        new(nameof(ProjectListItemViewModel.DisplayGroup), null, StringComparison.OrdinalIgnoreCase);
+    private string _groupsSignature = "";
     private bool _syncingSelection;
 
     public MainViewModel(AppState state)
@@ -50,13 +69,14 @@ public sealed partial class MainViewModel : ObservableObject
         Updates = new Services.UpdateService(state);
         Dashboard = new DashboardViewModel(state, this);
         ProjectsView = CollectionViewSource.GetDefaultView(ProjectItems);
-        ProjectsView.GroupDescriptions.Add(new PropertyGroupDescription(nameof(ProjectListItemViewModel.DisplayGroup)));
+        ProjectsView.GroupDescriptions.Add(_groupDescription);
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.GroupOrder), ListSortDirection.Ascending));
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.Name), ListSortDirection.Ascending));
         SidebarFilter = new ProjectFilterViewModel(state, state.Settings.SidebarHiddenProjects);
         ProjectsView.Filter = o => o is ProjectListItemViewModel i && SidebarFilter.Matches(i.Project);
         SidebarFilter.Changed += () =>
         {
+            SyncGroupNames();
             ProjectsView.Refresh();
             SyncSelection();
             OnPropertyChanged(nameof(NothingToShow));
@@ -85,7 +105,8 @@ public sealed partial class MainViewModel : ObservableObject
     public ObservableCollection<ProjectListItemViewModel> ProjectItems { get; } = [];
     public ICollectionView ProjectsView { get; }
     public ProjectFilterViewModel SidebarFilter { get; }
-    public bool NothingToShow => ProjectItems.Count > 0 && ProjectsView.IsEmpty;
+    /// <summary>A search found nothing (otherwise the group headings still show).</summary>
+    public bool NothingToShow => SidebarFilter.IsSearching && ProjectItems.Count > 0 && ProjectsView.IsEmpty;
 
     /// <summary>Replaced (not mutated) on every toggle, so the group headers' bindings update.</summary>
     public IReadOnlyList<string> CollapsedGroups => State.Settings.CollapsedGroups;
@@ -114,11 +135,34 @@ public sealed partial class MainViewModel : ObservableObject
         SidebarFilter.Rebuild(projects);
         foreach (var project in projects)
             ProjectItems.Add(new ProjectListItemViewModel(project, this));
+        SyncGroups();
         SelectedProjectItem = ProjectItems.FirstOrDefault(i => i.Project == selected);
         _syncingSelection = false;
         OnPropertyChanged(nameof(InboxCount));
         OnPropertyChanged(nameof(NothingToShow));
         if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+    }
+
+    /// <summary>After any list change: refreshes group pickers when the groups changed and lists empty groups too.</summary>
+    private void SyncGroups()
+    {
+        var signature = string.Join("\n", State.Settings.Groups);
+        if (signature != _groupsSignature)
+        {
+            _groupsSignature = signature;
+            foreach (var vm in _projectViewModels.Values) vm.RefreshGroups();
+        }
+        if (SyncGroupNames()) ProjectsView.Refresh();
+    }
+
+    /// <summary>Every group from the settings gets a heading, even an empty one, except while searching.</summary>
+    private bool SyncGroupNames()
+    {
+        List<string> names = SidebarFilter.IsSearching ? [] : State.Settings.Groups;
+        if (_groupDescription.GroupNames.OfType<string>().SequenceEqual(names)) return false;
+        _groupDescription.GroupNames.Clear();
+        foreach (var name in names) _groupDescription.GroupNames.Add(name);
+        return true;
     }
 
     /// <summary>Re-selects the open project in the sidebar after the filter hid and showed it again.</summary>
@@ -241,6 +285,90 @@ public sealed partial class MainViewModel : ObservableObject
         var name = InputDialog.Ask(Application.Current.MainWindow!, "Rename project", "Project name:", item.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
         GetProjectViewModel(item.Project).Name = name.Trim();
+    }
+
+    [RelayCommand] private void NewGroup() => AskNewGroup();
+
+    /// <summary>Asks for a group name until it is new (or the user cancels), adds the group and returns its name.</summary>
+    private string? AskNewGroup()
+    {
+        var name = "";
+        while (true)
+        {
+            name = InputDialog.Ask(Application.Current.MainWindow!, "New group", "Group name:", name);
+            if (string.IsNullOrWhiteSpace(name)) return null;
+            if (GroupOperations.Validate(State.Settings, name) is not { } error) break;
+            MessageBox.Show(Application.Current.MainWindow!, error, "New group", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        name = name.Trim();
+        GroupOperations.Add(State.Settings, name);
+        State.MarkSettingsDirty();
+        State.NotifyListChanged();
+        State.StatusText = $"Added the group {name}. Right-click a project › Move to group to fill it.";
+        return name;
+    }
+
+    private static bool CanEditGroup(string? group) =>
+        !string.IsNullOrWhiteSpace(group) && !WorkspaceSettings.IsDefaultGroup(group) && !ProjectGroups.Same(group, ProjectGroups.Archived);
+
+    [RelayCommand(CanExecute = nameof(CanEditGroup))]
+    private void RenameGroup(string? group)
+    {
+        if (!CanEditGroup(group)) return;
+        var name = group!;
+        while (true)
+        {
+            name = InputDialog.Ask(Application.Current.MainWindow!, "Rename group", "Group name:", name) ?? "";
+            if (string.IsNullOrWhiteSpace(name) || name.Trim() == group) return;
+            if (GroupOperations.Validate(State.Settings, name, renaming: group) is not { } error) break;
+            MessageBox.Show(Application.Current.MainWindow!, error, "Rename group", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        ApplyGroupChange(GroupOperations.Rename(State.Workspace, group!, name));
+        State.StatusText = $"Renamed the group {group} to {name.Trim()}.";
+    }
+
+    [RelayCommand(CanExecute = nameof(CanEditGroup))]
+    private void DeleteGroup(string? group)
+    {
+        if (!CanEditGroup(group)) return;
+        var count = State.Projects.Count(p => !p.IsInbox && ProjectGroups.Same(p.Group, group));
+        var moves = count == 1 ? "Its project moves" : $"Its {count} projects move";
+        if (count > 0 && MessageBox.Show(Application.Current.MainWindow!, $"Delete the group \"{group}\"?\n\n{moves} to Personal.",
+                "Delete group", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+        ApplyGroupChange(GroupOperations.Delete(State.Workspace, group!));
+        State.StatusText = count == 0 ? $"Deleted the group {group}." : $"Deleted the group {group}; its projects moved to Personal.";
+    }
+
+    private void ApplyGroupChange(List<Project> changedProjects)
+    {
+        foreach (var project in changedProjects) State.MarkDirty(project, touch: false);
+        State.MarkSettingsDirty();
+        OnPropertyChanged(nameof(CollapsedGroups));
+        State.NotifyListChanged();
+    }
+
+    public List<GroupChoiceViewModel> GroupChoicesFor(Project project)
+    {
+        var current = string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group;
+        return
+        [
+            .. State.Settings.Groups.Select(g => new GroupChoiceViewModel(g, ProjectGroups.Same(g, current), () => MoveToGroup(project, g))),
+            new GroupChoiceViewModel(null, false, () =>
+            {
+                if (AskNewGroup() is { } group) MoveToGroup(project, group);
+            }),
+        ];
+    }
+
+    public void MoveToGroup(Project project, string group)
+    {
+        var current = string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group;
+        if (ProjectGroups.Same(current, group)) return;
+        project.Group = group;
+        State.MarkDirty(project, touch: false);
+        if (_projectViewModels.TryGetValue(project.Id, out var vm)) vm.RefreshGroups();
+        State.NotifyListChanged();
+        State.StatusText = $"Moved {project.Name} to {group}.";
     }
 
     [RelayCommand]

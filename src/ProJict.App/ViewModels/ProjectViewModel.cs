@@ -56,7 +56,8 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public static IReadOnlyList<string> TagChoices { get; } = ["BUG", "ADD", "ISSUE", "CHANGE", "FIX", "IDEA"];
     public static IReadOnlyList<ProjectStatus> Statuses { get; } = Enum.GetValues<ProjectStatus>();
-    public IReadOnlyList<string> Groups => _state.Settings.Groups;
+    /// <summary>A copy, so raising Groups gives the header's group box a fresh list.</summary>
+    public IReadOnlyList<string> Groups => [.. _state.Settings.Groups];
     public IReadOnlyList<string> TagFilters { get; private set; } = [AllTags];
     public bool IsInbox => Project.IsInbox;
     public bool IsNotInbox => !Project.IsInbox;
@@ -90,12 +91,18 @@ public sealed partial class ProjectViewModel : ObservableObject
         get => Project.Group;
         set
         {
-            SetDetail(Project.Group, value, v => Project.Group = v?.Trim() ?? "", listChanged: true);
-            if (!string.IsNullOrWhiteSpace(value) && !_state.Settings.Groups.Contains(value.Trim(), StringComparer.OrdinalIgnoreCase))
+            if (ProjectGroups.Same(value, ProjectGroups.Archived))
+            {
+                RefreshGroups(); // "Archived" is the status, not a group
+                return;
+            }
+            // A name typed here that isn't a group yet becomes one (before the sidebar rebuilds).
+            if (!string.IsNullOrWhiteSpace(value) && GroupOperations.Validate(_state.Settings, value) == null)
             {
                 _state.Settings.Groups.Add(value.Trim());
                 _state.MarkSettingsDirty();
             }
+            SetDetail(Project.Group, value, v => Project.Group = v?.Trim() ?? "", listChanged: true);
         }
     }
 
@@ -129,6 +136,13 @@ public sealed partial class ProjectViewModel : ObservableObject
         OnPropertyChanged(property);
         OnPropertyChanged(nameof(ExportNamesText));
         if (listChanged) _state.NotifyListChanged();
+    }
+
+    /// <summary>After groups were added, renamed or deleted elsewhere.</summary>
+    public void RefreshGroups()
+    {
+        OnPropertyChanged(nameof(Groups));
+        OnPropertyChanged(nameof(Group));
     }
 
     private void NotifyDetails()

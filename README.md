@@ -52,6 +52,7 @@ HUD
 ## More
 
 - **Finding projects**: type in **Filter projects** above the sidebar list or on the dashboard to narrow it down. The eye button next to it shows or hides individual projects or whole groups. The sidebar and the dashboard each remember their own choice. Click a group heading (Personal, Work, …) to collapse it. You can also right-click a project to hide it.
+- **Groups**: Personal and Work are always there. Add your own with the folder button under the sidebar, then right-click a project › **Move to group**. Right-click a group heading to rename or delete it (its projects move back to Personal).
 - **Reusing a project's layout**: right-click a project and choose **Copy categories from** to add another project's categories (without its items).
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.

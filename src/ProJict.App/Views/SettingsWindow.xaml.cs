@@ -98,6 +98,7 @@ public partial class SettingsWindow : Window
         var groups = Groups.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (groups.Count > 0) s.Groups = groups;
+        s.EnsureDefaultGroups();
 
         App.ApplyTheme(s.Theme);
         _state.AppSettings.CheckForUpdates = CheckUpdates.IsChecked == true;

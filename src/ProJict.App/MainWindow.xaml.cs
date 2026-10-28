@@ -62,7 +62,13 @@ public partial class MainWindow : Window
 
     private void ProjectMenu_Opened(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: ProjectListItemViewModel item }) item.RefreshTemplateSources();
+        if (sender is FrameworkElement { DataContext: ProjectListItemViewModel item }) item.RefreshMenu();
+    }
+
+    /// <summary>A group picked under "Move to group".</summary>
+    private void MoveToGroupMenu_Click(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is MenuItem { DataContext: GroupChoiceViewModel choice }) choice.Choose();
     }
 
     /// <summary>A project picked under "Copy categories from" (the click bubbles up from the generated sub-item).</summary>
