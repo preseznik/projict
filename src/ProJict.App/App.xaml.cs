@@ -78,8 +78,10 @@ public partial class App : Application
             MessageBox.Show(main, "Some files could not be loaded and were left untouched:\n\n" + string.Join("\n", State.Store.LoadErrors),
                 "ProJict", MessageBoxButton.OK, MessageBoxImage.Warning);
 
-        if (appSettings.CheckForUpdates && (appSettings.LastUpdateCheck is not { } last || DateTime.Now - last > TimeSpan.FromHours(20)))
+        if (appSettings.CheckForUpdates)
             _ = MainVm.Updates.CheckAsync(manual: false);
+        if (MainVm.GitHub.HasWork)
+            _ = MainVm.GitHub.RefreshAsync(force: false);
     }
 
     public bool RegisterHotkey(string gesture, out string? error)
@@ -148,6 +150,8 @@ public partial class App : Application
     public void ExitApp()
     {
         IsExiting = true;
+        // Dialogs first (an update can be installed from Settings), then the main window.
+        foreach (var window in Windows.OfType<Window>().Where(w => w != MainWindow).ToList()) window.Close();
         if (MainWindow != null) MainWindow.Close();
         else Shutdown();
     }

@@ -8,7 +8,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 
 - Windows 10 or 11 (64-bit).
 - Installs for your user account only, so it needs no administrator rights.
-- ProJict checks for new versions when it starts and can install them for you (**Settings → Updates**).
+- ProJict checks for a new version every time it starts and can install it for you, from the bar that appears or from **Settings → Updates**.
 
 ## Getting started
 
@@ -51,8 +51,9 @@ HUD
 
 ## More
 
-- **Finding projects**: type in **Filter projects** above the sidebar list or on the dashboard to narrow it down. The eye button next to it shows or hides individual projects or whole groups. The sidebar and the dashboard each remember their own choice. Click a group heading (Personal, Work, …) to collapse it. You can also right-click a project to hide it.
+- **Finding projects**: type in **Filter projects** above the sidebar list or on the dashboard to narrow it down. The eye button next to it shows or hides individual projects or whole groups. Hidden projects are hidden in both the sidebar and the dashboard. Click a group heading (Personal, Work, …) to collapse it. You can also right-click a project to hide it.
 - **Groups**: Personal and Work are always there. Add your own with the folder button under the sidebar, then right-click a project › **Move to group**. Right-click a group heading to rename or delete it (its projects move back to Personal).
+- **Releases on GitHub**: enter your GitHub account under **Settings → GitHub** (tick the GitHub CLI option to include private repositories). ProJict links projects to repositories with the same name, shows each one's latest release on its dashboard card, and the dashboard's **Released** filter lists them. A project's own GitHub link (Details) always wins.
 - **Reusing a project's layout**: right-click a project and choose **Copy categories from** to add another project's categories (without its items).
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.

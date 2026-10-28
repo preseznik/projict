@@ -27,15 +27,39 @@ public partial class SettingsWindow : Window
         Groups.Text = string.Join(", ", s.Groups);
         VsCodePath.Text = s.VsCodePath ?? "";
         CheckUpdates.IsChecked = state.AppSettings.CheckForUpdates;
+        GitHubAccount.Text = s.GitHubAccount ?? "";
+        UseGitHubCli.IsChecked = state.AppSettings.UseGitHubCliSignIn;
         VersionText.Text = $"ProJict {UpdateService.CurrentVersionText}";
+        UpdatePanel.DataContext = App.Current.MainVm.Updates;
     }
 
     private async void CheckNow_Click(object sender, RoutedEventArgs e)
     {
         CheckNow.IsEnabled = false;
         UpdateResult.Text = "Checking…";
-        UpdateResult.Text = await App.Current.MainVm.Updates.CheckAsync(manual: true);
+        var updates = App.Current.MainVm.Updates;
+        var result = await updates.CheckAsync(manual: true);
+        // A found update shows in the panel below, with its install button.
+        UpdateResult.Text = updates.IsAvailable ? "" : result;
         CheckNow.IsEnabled = true;
+    }
+
+    private async void CheckReleases_Click(object sender, RoutedEventArgs e)
+    {
+        // Checking uses what is typed here, so keep it even if the window is then cancelled.
+        ApplyGitHubSettings();
+        _state.MarkSettingsDirty();
+        _state.SaveAppSettings();
+        CheckReleases.IsEnabled = false;
+        ReleasesResult.Text = "Checking GitHub…";
+        ReleasesResult.Text = await App.Current.MainVm.GitHub.RefreshAsync(force: true);
+        CheckReleases.IsEnabled = true;
+    }
+
+    private void ApplyGitHubSettings()
+    {
+        _state.Settings.GitHubAccount = string.IsNullOrWhiteSpace(GitHubAccount.Text) ? null : GitHubAccount.Text.Trim();
+        _state.AppSettings.UseGitHubCliSignIn = UseGitHubCli.IsChecked == true;
     }
 
     private void Hotkey_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -102,6 +126,7 @@ public partial class SettingsWindow : Window
 
         App.ApplyTheme(s.Theme);
         _state.AppSettings.CheckForUpdates = CheckUpdates.IsChecked == true;
+        ApplyGitHubSettings();
         _state.SaveAppSettings();
 
         if (Hotkey.Text != s.Hotkey || !string.IsNullOrEmpty(Hotkey.Text))

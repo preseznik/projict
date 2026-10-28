@@ -67,12 +67,20 @@ public sealed partial class MainViewModel : ObservableObject
     {
         State = state;
         Updates = new Services.UpdateService(state);
+        GitHub = new Services.GitHubService(state);
         Dashboard = new DashboardViewModel(state, this);
+        GitHub.Updated += () =>
+        {
+            foreach (var vm in _projectViewModels.Values) vm.RefreshGitHubLink();
+            if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+        };
         ProjectsView = CollectionViewSource.GetDefaultView(ProjectItems);
         ProjectsView.GroupDescriptions.Add(_groupDescription);
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.GroupOrder), ListSortDirection.Ascending));
         ProjectsView.SortDescriptions.Add(new SortDescription(nameof(ProjectListItemViewModel.Name), ListSortDirection.Ascending));
-        SidebarFilter = new ProjectFilterViewModel(state, state.Settings.SidebarHiddenProjects);
+        SidebarFilter = new ProjectFilterViewModel(state, state.Settings.HiddenProjects);
+        SidebarFilter.HiddenChanged += Dashboard.Filter.OnHiddenChangedElsewhere;
+        Dashboard.Filter.HiddenChanged += SidebarFilter.OnHiddenChangedElsewhere;
         ProjectsView.Filter = o => o is ProjectListItemViewModel i && SidebarFilter.Matches(i.Project);
         SidebarFilter.Changed += () =>
         {
@@ -101,6 +109,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public AppState State { get; }
     public Services.UpdateService Updates { get; }
+    public Services.GitHubService GitHub { get; }
     public DashboardViewModel Dashboard { get; }
     public ObservableCollection<ProjectListItemViewModel> ProjectItems { get; } = [];
     public ICollectionView ProjectsView { get; }
@@ -376,7 +385,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (item == null) return;
         SidebarFilter.SetShown([item.Project], false);
-        State.StatusText = $"Hid {item.Name} from the list. The eye button above the list shows it again.";
+        State.StatusText = $"Hid {item.Name}. The eye button next to a filter box shows it again.";
     }
 
     public List<TemplateSourceViewModel> TemplateSourcesFor(Project target) =>

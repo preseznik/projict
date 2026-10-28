@@ -11,6 +11,8 @@ public sealed class AppSettings
     public bool WindowMaximized { get; set; }
     public Guid? LastProjectId { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Ask the GitHub CLI (gh) for its sign-in, so release checks include private repositories.</summary>
+    public bool UseGitHubCliSignIn { get; set; }
     public DateTime? LastUpdateCheck { get; set; }
     /// <summary>Release tag the user chose to skip; no reminder until a newer one appears.</summary>
     public string? SkippedVersion { get; set; }
@@ -72,21 +74,33 @@ public sealed class WorkspaceSettings
     public bool CloseToTray { get; set; } = true;
     public int StaleDays { get; set; } = 30;
     public string? VsCodePath { get; set; }
+    /// <summary>GitHub user or organization whose repositories are matched to projects by name.</summary>
+    public string? GitHubAccount { get; set; }
     public string Theme { get; set; } = "System";
     public bool SideBySide { get; set; }
     public bool MarkCopiedInProgress { get; set; }
     public Guid? LastCaptureProjectId { get; set; }
     public string? LastCaptureCategory { get; set; }
-    /// <summary>Projects left out of the sidebar list (shown again from its show/hide dropdown).</summary>
-    public List<Guid> SidebarHiddenProjects { get; set; } = [];
-    /// <summary>Projects left out of the dashboard.</summary>
-    public List<Guid> DashboardHiddenProjects { get; set; } = [];
+    /// <summary>Projects left out of the sidebar list and the dashboard (shown again from either eye dropdown).</summary>
+    public List<Guid> HiddenProjects { get; set; } = [];
+    /// <summary>Where 0.1.2–0.1.4 kept the sidebar's hidden projects; moved into HiddenProjects on load.</summary>
+    public List<Guid>? SidebarHiddenProjects { get; set; }
     /// <summary>Sidebar groups the user collapsed.</summary>
     public List<string> CollapsedGroups { get; set; } = [];
 
     public static bool IsDefaultGroup(string? name) =>
         string.Equals(name?.Trim(), PersonalGroup, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(name?.Trim(), WorkGroup, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Brings settings written by older versions up to date.</summary>
+    public void MigrateOldSettings()
+    {
+        if (SidebarHiddenProjects is { } old)
+        {
+            HiddenProjects = HiddenProjects.Union(old).ToList();
+            SidebarHiddenProjects = null;
+        }
+    }
 
     /// <summary>Puts Personal and Work back if a hand-edited workspace.json dropped them, and drops blanks and duplicates.</summary>
     public void EnsureDefaultGroups()

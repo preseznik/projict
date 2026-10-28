@@ -167,7 +167,7 @@
                                     <Grid.ContextMenu>
                                         <ContextMenu Opened="ProjectMenu_Opened">
                                             <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
-                                            <MenuItem Header="Hide from list" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Hide" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
                                             <MenuItem Header="Move to group" ItemsSource="{Binding GroupChoices}" Click="MoveToGroupMenu_Click">
                                                 <MenuItem.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:GroupChoiceViewModel}">

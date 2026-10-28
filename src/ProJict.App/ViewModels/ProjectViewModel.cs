@@ -138,6 +138,9 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (listChanged) _state.NotifyListChanged();
     }
 
+    /// <summary>After the GitHub check linked this project to a repository.</summary>
+    public void RefreshGitHubLink() => OnPropertyChanged(nameof(GitHubUrl));
+
     /// <summary>After groups were added, renamed or deleted elsewhere.</summary>
     public void RefreshGroups()
     {

@@ -60,7 +60,7 @@ public sealed class ProjectToggleGroupViewModel(string name, List<ProjectToggleV
     }
 }
 
-/// <summary>Search text plus a saved list of hidden projects; the sidebar and the dashboard each have one.</summary>
+/// <summary>Search text plus the saved list of hidden projects; the sidebar and the dashboard each have one, sharing that list.</summary>
 public sealed partial class ProjectFilterViewModel(AppState state, List<Guid> hidden) : ObservableObject
 {
     private static readonly CompareInfo Compare = CultureInfo.InvariantCulture.CompareInfo;
@@ -71,6 +71,9 @@ public sealed partial class ProjectFilterViewModel(AppState state, List<Guid> hi
 
     /// <summary>Raised on Enter in the search box.</summary>
     public event Action? Accepted;
+
+    /// <summary>Raised when this filter showed or hid projects, so the other one sharing the list follows.</summary>
+    public event Action? HiddenChanged;
 
     [ObservableProperty] private string _searchText = "";
 
@@ -128,6 +131,13 @@ public sealed partial class ProjectFilterViewModel(AppState state, List<Guid> hi
             else if (!hidden.Contains(project.Id)) hidden.Add(project.Id);
         }
         state.MarkSettingsDirty();
+        OnHiddenChangedElsewhere();
+        HiddenChanged?.Invoke();
+    }
+
+    /// <summary>Updates the check boxes and the list after the shared hidden list changed.</summary>
+    public void OnHiddenChangedElsewhere()
+    {
         foreach (var group in Groups) group.Refresh();
         OnPropertyChanged(nameof(HiddenCount));
         OnPropertyChanged(nameof(HasHidden));

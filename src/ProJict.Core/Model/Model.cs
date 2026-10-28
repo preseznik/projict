@@ -80,6 +80,22 @@ public sealed class ArchivedFile
     public string Text { get; set; } = "";
 }
 
+/// <summary>The newest published release of a project's GitHub repository, as last checked.</summary>
+public sealed class GitHubReleaseInfo
+{
+    /// <summary>The repository link that was checked; a different link means the info is out of date.</summary>
+    public string Repository { get; set; } = "";
+    /// <summary>Tag of the newest published release; null when the repository has none.</summary>
+    public string? Tag { get; set; }
+    public DateTime? PublishedAt { get; set; }
+    public string? Url { get; set; }
+    /// <summary>Only set when the repository has nothing but pre-releases.</summary>
+    public bool Prerelease { get; set; }
+    public DateTime CheckedAt { get; set; }
+    /// <summary>Why the check failed (e.g. a private repository without sign-in); null when it worked.</summary>
+    public string? Error { get; set; }
+}
+
 public sealed class Project
 {
     public const string InboxKey = "Inbox";
@@ -101,6 +117,8 @@ public sealed class Project
     public List<NoteDoc> Notes { get; set; } = [];
     public List<Release> Releases { get; set; } = [];
     public List<ArchivedFile> ArchivedFiles { get; set; } = [];
+    /// <summary>What GitHub said about the project's repository the last time ProJict asked (not part of undo).</summary>
+    public GitHubReleaseInfo? GitHubRelease { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 

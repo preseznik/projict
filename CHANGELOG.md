@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 (2026-10-28)
+
+- Checks for a new version every time it starts (before, at most once a day).
+- Settings › Updates has its own Install update button when a new version is found.
+- Hidden projects are now hidden in both the sidebar and the dashboard, from either eye button or the right-click menu.
+- GitHub releases: enter your GitHub account in Settings › GitHub (optionally with the GitHub CLI sign-in for private repositories). Projects are linked to repositories with the same name, dashboard cards show the latest release, and the Released filter lists projects with a published release.
+
 ## 0.1.4 (2026-10-28)
 
 - Your own project groups next to Personal and Work: add them with the new folder button under the sidebar, rename or delete them by right-clicking their heading. Deleting a group moves its projects to Personal.

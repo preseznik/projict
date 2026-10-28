@@ -29,7 +29,7 @@
                 <ColumnDefinition Width="340" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Text="No projects to show." Style="{StaticResource MutedText}" VerticalAlignment="Top" Margin="2,4,0,0"
+            <TextBlock Text="{Binding EmptyText}" Style="{StaticResource MutedText}" VerticalAlignment="Top" Margin="2,4,0,0" TextWrapping="Wrap" MaxWidth="520" HorizontalAlignment="Left"
                        Visibility="{Binding Cards, Converter={StaticResource InvEmptyToVis}}" />
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Cards}">
@@ -47,7 +47,7 @@
                                 <Border.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Open" Command="{Binding OpenCommand}" />
-                                        <MenuItem Header="Hide from dashboard" Command="{Binding HideCommand}" />
+                                        <MenuItem Header="Hide" Command="{Binding HideCommand}" />
                                     </ContextMenu>
                                 </Border.ContextMenu>
                                 <StackPanel>
@@ -81,6 +81,10 @@
                                         <Border Style="{StaticResource TagChip}" Background="{DynamicResource SystemFillColorCautionBrush}" Margin="0,0,4,0"
                                                 Visibility="{Binding IsStale, Converter={StaticResource BoolToVis}}" ToolTip="No activity for a while">
                                             <TextBlock Text="stale" Style="{StaticResource ChipText}" />
+                                        </Border>
+                                        <Border Style="{StaticResource TagChip}" Background="{DynamicResource AccentFillColorDefaultBrush}" Margin="0,0,4,0"
+                                                Visibility="{Binding HasGitHubRelease, Converter={StaticResource BoolToVis}}" ToolTip="{Binding GitHubReleaseToolTip}">
+                                            <TextBlock Text="{Binding GitHubReleaseTag}" Style="{StaticResource ChipText}" />
                                         </Border>
                                     </WrapPanel>
                                     <TextBlock Text="{Binding LastActivityText}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,8,0,0" />
