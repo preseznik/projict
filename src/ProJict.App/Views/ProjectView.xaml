@@ -70,7 +70,7 @@
                             <Border CornerRadius="4" BorderThickness="1" Padding="5,0,6,1" BorderBrush="{Binding Priority, Converter={StaticResource PriorityToBrush}}">
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse Width="7" Height="7" Fill="{Binding Priority, Converter={StaticResource PriorityToBrush}}" VerticalAlignment="Center" />
-                                    <TextBlock Text="{Binding Priority}" FontSize="10.5" FontWeight="SemiBold" Margin="4,0,0,0" />
+                                    <TextBlock Text="{Binding PriorityText}" FontSize="10.5" FontWeight="SemiBold" Margin="4,0,0,0" />
                                 </StackPanel>
                             </Border>
                         </Button>
@@ -369,6 +369,10 @@
                 <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Release" Command="{Binding NewReleaseCommand}" ToolTip="Patch notes from items done since the last release" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE7C1;" /><TextBlock Text="Release" Margin="6,0,0,0" /></StackPanel>
                 </Button>
+                <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Ship" Command="{Binding StartShipCommand}" Visibility="{Binding CanShip, Converter={StaticResource BoolToVis}}"
+                        ToolTip="Ask an AI agent to commit, build, package, push or release this project; you approve its plan first">
+                    <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE724;" /><TextBlock Text="Ship" Margin="6,0,0,0" /></StackPanel>
+                </Button>
                 <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Export" Command="{Binding ExportCommand}" ToolTip="Export to TODO/DONE text files">
                     <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xEDE1;" /><TextBlock Text="Export" Margin="6,0,0,0" /></StackPanel>
                 </Button>
@@ -421,6 +425,10 @@
                                     <TextBlock x:Name="PriorityChevron" Style="{StaticResource Icon}" Text="&#xE70D;" FontSize="9" Margin="6,1,0,0" />
                                 </StackPanel>
                             </Button>
+                            <ToggleButton x:Name="WorkingOnToggle" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Working on" IsChecked="{Binding ShowWorkingOn}" Margin="4,0,0,0"
+                                          ToolTip="Show only items someone is working on: checked out by an AI agent or marked in progress (Ctrl+I)">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE768;" /><TextBlock x:Name="WorkingOnLabel" Text="Working on" Margin="6,0,0,0" /></StackPanel>
+                            </ToggleButton>
                             <ToggleButton x:Name="ShowDoneToggle" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
                                 <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" /><TextBlock x:Name="ShowDoneLabel" Text="Show done" Margin="6,0,0,0" /></StackPanel>
                             </ToggleButton>
@@ -442,6 +450,77 @@
                     </Grid>
 
                     <DockPanel Grid.Row="1">
+                    <!-- A ship request: choosing its steps, then the agent's plan, your decision and what the agent reports. -->
+                    <Border x:Name="ShipCard" DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="4,0,8,8"
+                            Visibility="{Binding HasShipCard, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <StackPanel Visibility="{Binding IsComposingShip, Converter={StaticResource BoolToVis}}">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                        <Button Style="{StaticResource SubtleButton}" Content="Cancel" Command="{Binding CancelShipRequestCommand}" />
+                                        <Button Style="{StaticResource AccentButtonStyle}" Content="Ask to ship" Command="{Binding RequestShipCommand}" Margin="6,0,0,0" />
+                                    </StackPanel>
+                                    <WrapPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE724;" Margin="0,0,8,0" />
+                                        <TextBlock Text="Ship this project:" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                        <ItemsControl ItemsSource="{Binding ShipChoices}" Focusable="False" VerticalAlignment="Center">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="{x:Type vm:ShipStepChoice}">
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" ToolTip="{Binding ToolTip}" MinWidth="0" Margin="0,0,16,0" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </WrapPanel>
+                                </DockPanel>
+                                <TextBlock Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="An AI agent working in this project posts its plan here: the version, what's in it, items still waiting for your review and what it will run. Nothing runs until you approve it. How this project is shipped: Details › Shipping." />
+                            </StackPanel>
+                            <StackPanel Visibility="{Binding ShowShipRequest, Converter={StaticResource BoolToVis}}">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                        <Button Style="{StaticResource SubtleButton}" Content="Withdraw" Command="{Binding WithdrawShipCommand}" ToolTip="Take the request back"
+                                                Visibility="{Binding CanWithdrawShip, Converter={StaticResource BoolToVis}}" />
+                                        <Button Style="{StaticResource SubtleButton}" Content="Decline" Command="{Binding DeclineShipCommand}" Margin="6,0,0,0"
+                                                Visibility="{Binding ShipWaitsForYou, Converter={StaticResource BoolToVis}}" />
+                                        <Button Style="{StaticResource AccentButtonStyle}" Content="Approve" Command="{Binding ApproveShipCommand}" Margin="6,0,0,0"
+                                                ToolTip="Lets the agent run this plan" Visibility="{Binding ShipWaitsForYou, Converter={StaticResource BoolToVis}}" />
+                                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE711;" FontSize="12" Command="{Binding DismissShipCommand}" ToolTip="Close"
+                                                AutomationProperties.Name="Close ship request" Visibility="{Binding CanDismissShip, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                    <WrapPanel VerticalAlignment="Center">
+                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE724;" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding ShipTitle}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Border Style="{StaticResource TagChip}" Background="{DynamicResource SubtleFillColorSecondaryBrush}" Margin="10,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ShipStateText}" FontSize="11" />
+                                        </Border>
+                                        <Ellipse Style="{StaticResource UnreadDot}" Margin="6,0,0,0" ToolTip="The plan waits for your approval"
+                                                 Visibility="{Binding ShipWaitsForYou, Converter={StaticResource BoolToVis}}" />
+                                    </WrapPanel>
+                                </DockPanel>
+                                <TextBlock Text="{Binding ShipStatusText}" Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="10,8" Margin="0,8,0,0"
+                                        Visibility="{Binding HasShipPlan, Converter={StaticResource BoolToVis}}">
+                                    <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto">
+                                        <TextBox x:Name="ShipPlanText" Style="{StaticResource SelectableText}" Text="{Binding ShipPlan, Mode=OneWay}" AutomationProperties.Name="Plan" />
+                                    </ScrollViewer>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding ShipLog}" Focusable="False" Margin="0,8,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ShipLogLine}">
+                                            <TextBlock TextWrapping="Wrap" FontSize="12" Margin="0,1,0,0">
+                                                <Run Text="{Binding Time, Mode=OneWay}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" /><Run Text="   " /><Run
+                                                     Text="{Binding By, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="   " /><Run Text="{Binding Text, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Set by clicking a name under an item: only what that person or agent worked on. -->
                     <Border DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="10,4" Margin="4,0,8,8"
                             Visibility="{Binding IsWorkedByActive, Converter={StaticResource BoolToVis}}">
@@ -483,7 +562,7 @@
                     </DockPanel>
 
                     <TextBlock Grid.Row="2" Style="{StaticResource MutedText}" FontSize="11" Margin="6,6,0,0" TextWrapping="Wrap"
-                               Text="Right-click an item, or point at it for its discussion and ⋯ buttons · Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+1…4 priority · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
+                               Text="Right-click an item, or point at it for its discussion and ⋯ buttons · Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+1…5 priority · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
                 </Grid>
             </TabItem>
 
@@ -667,6 +746,25 @@
                                      MinHeight="120" VerticalContentAlignment="Top" FontFamily="{StaticResource MonoFont}" FontSize="13" />
                             <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
                                        Text="Put at the top of every “Copy prompt”: engine version, conventions, how to test, what to commit…" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="6" Text="Shipping" Visibility="{Binding CanShip, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Grid.Row="6" Grid.Column="1" Margin="0,4" Visibility="{Binding CanShip, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding ShipSteps}" Focusable="False" AutomationProperties.Name="Steps this project has">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:ShipStepChoice}">
+                                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" ToolTip="{Binding ToolTip}" MinWidth="0" Margin="0,0,16,0" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <CheckBox Content="Commit, build and package without asking me (push and release always ask)" IsChecked="{Binding ShipLocalWithoutApproval}" Margin="0,8,0,0" />
+                            <TextBox Text="{Binding ShipHowTo, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Margin="0,8,0,0"
+                                     MinHeight="100" VerticalContentAlignment="Top" FontFamily="{StaticResource MonoFont}" FontSize="13" AutomationProperties.Name="How to ship" />
+                            <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                                       Text="How to ship it: what an AI agent does when you ask (Ship button), e.g. bump the version in …, run build.ps1, test, commit, push, publish the GitHub release. Untick the steps this project doesn't have." />
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>

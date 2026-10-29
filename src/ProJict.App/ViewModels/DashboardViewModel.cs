@@ -25,6 +25,10 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
     public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
     public bool HasReview => Stats.ToReview > 0;
     public string ReviewText => $"{Stats.ToReview} to review";
+    /// <summary>A ship request in progress: "Ship: waiting for your approval".</summary>
+    public bool HasShip => Project.OpenShip != null;
+    public string? ShipText => Project.OpenShip is { } s ? "Ship: " + Core.Features.ShipFlow.StateName(s.State) : null;
+    public string? ShipToolTip => Project.OpenShip is { } s ? $"Ship request: {Core.Features.ShipFlow.Describe(s.Steps)}" : null;
     public bool IsStale => Project.Status is ProjectStatus.Active && Stats.IsStale(staleDays, DateTime.Now);
     public bool HasGitHubRelease => Project.GitHubRelease?.Tag != null;
     public string? GitHubReleaseTag => Project.GitHubRelease?.Tag;

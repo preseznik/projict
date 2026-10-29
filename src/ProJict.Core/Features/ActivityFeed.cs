@@ -3,7 +3,7 @@ using ProJict.Core.Storage;
 
 namespace ProJict.Core.Features;
 
-public enum FeedKind { Added, Done, History, Comment, Release, Note, Project }
+public enum FeedKind { Added, Done, History, Comment, Release, Note, Project, Ship }
 
 /// <summary>
 /// Something that happened in ProJict: who did it, what they did (<see cref="Action"/>), to what (<see cref="Subject"/>),
@@ -19,6 +19,7 @@ public sealed record FeedEvent(DateTime At, FeedKind Kind, string Who, bool Agen
     public string? Group { get; init; }
     public NoteDoc? Note { get; init; }
     public Release? Release { get; init; }
+    public ShipRequest? Ship { get; init; }
 
     /// <summary>Everything the Feed's search looks in.</summary>
     public string SearchText => $"{Who} {Action} {Subject} {Detail} {Project?.Name} {Category?.Name} {Group}";
@@ -75,6 +76,14 @@ public static class ActivityFeed
             foreach (var release in project.Releases.Where(r => !r.IsBaseline))
                 events.Add(new FeedEvent(release.Date, FeedKind.Release, release.CreatedBy ?? userName, false,
                     $"released {release.Version}", string.IsNullOrWhiteSpace(release.Title) ? project.Name : release.Title.Trim()) { Project = project, Release = release });
+
+            foreach (var request in project.Ships ?? [])
+                foreach (var entry in request.Log)
+                {
+                    var (action, detail) = Describe(entry.Text);
+                    events.Add(new FeedEvent(entry.At, FeedKind.Ship, entry.By, entry.Agent, action, $"Shipping {project.Name}", detail)
+                        { Project = project, Ship = request });
+                }
 
             foreach (var note in project.Notes.Where(n => n.UpdatedBy != null || !FromImport(n.UpdatedAt)))
                 events.Add(new FeedEvent(note.UpdatedAt, FeedKind.Note, note.UpdatedBy ?? userName, false, "updated the note", note.Title)

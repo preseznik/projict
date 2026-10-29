@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using ProJict.App.Services;
 using ProJict.Core.Export;
+using ProJict.Core.Model;
 
 namespace ProJict.App.Views;
 
@@ -29,6 +30,8 @@ public partial class SettingsWindow : Window
         VsCodePath.Text = s.VsCodePath ?? "";
         CheckUpdates.IsChecked = state.AppSettings.CheckForUpdates;
         AllowAgents.IsChecked = state.AppSettings.AllowAgents;
+        foreach (var box in AgentPriorities.Children.OfType<CheckBox>())
+            box.IsChecked = s.AgentPriorities.Contains(Enum.Parse<Priority>((string)box.Tag));
         UserName.Text = state.UserName;
         AgentClient.ItemsSource = AgentSetups(state);
         AgentClient.SelectedIndex = 0;
@@ -203,6 +206,8 @@ public partial class SettingsWindow : Window
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         if (groups.Count > 0) s.Groups = groups;
         s.EnsureDefaultGroups();
+        s.AgentPriorities = AgentPriorities.Children.OfType<CheckBox>().Where(b => b.IsChecked == true)
+            .Select(b => Enum.Parse<Priority>((string)b.Tag)).ToList();
 
         App.ApplyTheme(s.Theme);
         _state.AppSettings.CheckForUpdates = CheckUpdates.IsChecked == true;

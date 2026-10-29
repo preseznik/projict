@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ProJict.Core.Export;
+using ProJict.Core.Features;
 using ProJict.Core.Model;
 using ProJict.Core.Storage;
 
@@ -44,7 +45,7 @@ public sealed partial class AppState : ObservableObject
 
     [ObservableProperty] private string _statusText = "";
 
-    /// <summary>How you sign comments and history entries (Settings › AI agents &amp; comments, else the Windows user name).</summary>
+    /// <summary>How you sign comments and history entries (Settings › Comments &amp; history, else the Windows user name).</summary>
     public string UserName => string.IsNullOrWhiteSpace(AppSettings.UserName) ? Environment.UserName : AppSettings.UserName.Trim();
 
     /// <summary>Raised after a group's discussion changed (projects' discussions raise <see cref="ProjectChanged"/>).</summary>
@@ -96,7 +97,8 @@ public sealed partial class AppState : ObservableObject
     /// <summary>Something in the project waits for you: a comment you haven't read, or work an agent finished.</summary>
     public bool NeedsAttention(Project project) =>
         project.Walk().Any(l => l.Item.NeedsReview || HasUnread(ReadKey(l.Item.Id), l.Item.Comments)) ||
-        project.Categories.Any(c => HasUnread(ReadKey(c.Id), c.Comments));
+        project.Categories.Any(c => HasUnread(ReadKey(c.Id), c.Comments)) ||
+        project.OpenShip?.State == ShipState.Planned;
 
     /// <summary>Raised after any edit to a project (sidebar counts, dashboard).</summary>
     public event Action<Project>? ProjectChanged;

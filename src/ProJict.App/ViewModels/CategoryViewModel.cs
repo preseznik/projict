@@ -165,8 +165,10 @@ public sealed partial class CategoryViewModel : ObservableObject
 
     [RelayCommand] private void CopyPrompt() => Owner.CopyPromptFor(Model.Items.Where(i => !i.IsDone));
     [RelayCommand] private void OpenDiscussion() => Owner.OpenDiscussion(Model.Id);
+    [RelayCommand] private void MoveToTop() => Owner.MoveCategoryToEnd(this, top: true);
     [RelayCommand] private void MoveUp() => Owner.MoveCategory(this, -1);
     [RelayCommand] private void MoveDown() => Owner.MoveCategory(this, +1);
+    [RelayCommand] private void MoveToBottom() => Owner.MoveCategoryToEnd(this, top: false);
     [RelayCommand] private void Delete() => Owner.DeleteCategory(this);
     [RelayCommand] private void ToggleExpanded() => IsExpanded = !IsExpanded;
 }

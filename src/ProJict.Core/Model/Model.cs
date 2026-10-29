@@ -4,8 +4,11 @@ namespace ProJict.Core.Model;
 
 public enum ItemState { Todo, InProgress, Done }
 
-/// <summary>How pressing an item is; None (the default) means not set.</summary>
-public enum Priority { None, Low, Medium, High, Urgent }
+/// <summary>
+/// How pressing an item is; None (the default) means not set. Hold parks an item on purpose: it sorts last and AI agents
+/// leave it alone. Compare with Priorities.Rank, not the numbers (Hold came last).
+/// </summary>
+public enum Priority { None, Low, Medium, High, Urgent, Hold }
 
 public enum ProjectStatus { Idea, Active, Paused, Released, Archived }
 
@@ -275,9 +278,15 @@ public sealed class Project
     public GitHubReleaseInfo? GitHubRelease { get; set; }
     /// <summary>Set once the repository's issues were imported; null for projects that don't use them.</summary>
     public IssueSync? Issues { get; set; }
+    /// <summary>How the project is shipped; null until set in Details (then all steps, no instructions).</summary>
+    public ShipSettings? Shipping { get; set; }
+    /// <summary>Ship requests, oldest first (the last few are kept); null while there were none. Not part of undo.</summary>
+    public List<ShipRequest>? Ships { get; set; }
     /// <summary>On a guest: the ProJict this project is shown from. Such projects live only in memory and are never saved here.</summary>
     [JsonIgnore] public RemoteOrigin? Remote { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    /// <summary>The ship request in progress (asked, planned, approved or running), if any.</summary>
+    [JsonIgnore] public ShipRequest? OpenShip => Ships?.LastOrDefault(s => s.IsOpen);
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
     public static Project Create(string name, string? group = null) => new()
@@ -323,6 +332,13 @@ public sealed class Project
                 if (seen.TryGetValue(item.Issue!.Number, out var current)) item.Issue = current.DeepClone();
         // With its items: undoing an import forgets it, so the next sync brings those issues back.
         Issues = snapshot.Issues;
+        // Shipping is about commits and releases that really happened (and what you approved), which undo can't take
+        // back; a guest takes the host's version as it is.
+        if (!keepIssueLinks)
+        {
+            Shipping = snapshot.Shipping;
+            Ships = snapshot.Ships;
+        }
     }
 
     /// <summary>Keeps letters, digits, '.', '_' and '-' so the key is a valid file name.</summary>

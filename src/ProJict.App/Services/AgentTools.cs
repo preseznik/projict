@@ -45,14 +45,16 @@ public sealed class AgentTools : IMcpToolHost
             "Adds a short label to the name you sign with (e.g. the task or folder), so the user can tell parallel sessions apart: \"Claude Code · login fix\".",
             Schema(("label", "string", "A few words; empty removes the label.", true)), SetLabel);
         Add("list_items", "List items",
-            "Items of a project, flattened (sub-items name their parent). Filter by state, tag, category or text.",
+            "Items of a project, flattened (sub-items name their parent). Filter by state, tag, category or text. " +
+            "Items the user keeps off limits to agents (by priority, or on hold) are left out unless include_off_limits is true.",
             Schema(ProjectArg,
                 ("state", "enum:open|todo|in_progress|done|review|all", "open (default) = to do and in progress; review = finished by an agent, waiting for the user.", false),
                 ("tag", "string", "Only items with this tag, e.g. BUG.", false),
                 ("category", "string", "Only this category.", false),
                 ("query", "string", "Words that must all appear in the item text or attachment names.", false),
-                ("priority", "enum:urgent|high|medium|low|none", "Only items at least this pressing (low = any priority set), or none = only items without one.", false),
+                ("priority", "enum:urgent|high|medium|low|hold|none", "Only items at least this pressing (low = any priority set), hold = only items on hold, none = only items without one.", false),
                 ("sort", "enum:board|priority", "board (default) = the order on the board; priority = most pressing first.", false),
+                ("include_off_limits", "boolean", "Also list items you may not work on, marked offLimits (default false).", false),
                 ("limit", "integer", "Most items to return (default 50).", false)),
             ListItems, readOnly: true);
         Add("get_item", "Get item",
@@ -112,6 +114,24 @@ public sealed class AgentTools : IMcpToolHost
             Schema(ProjectArg, ("version", "string", "Version; defaults to the next patch version.", false),
                 ("title", "string", "Optional release title.", false), ("save", "boolean", "Record the release (default false).", false)),
             DraftRelease);
+        Add("ship_request", "Ship request",
+            "The project's ship request, if the user made one (they want it committed, built, packaged, pushed and/or released): its steps, state, " +
+            "plan and log, plus the project's own instructions for shipping (howTo), the suggested next version and the items still waiting for the user's review.",
+            Schema(ProjectArg), ShipRequestInfo, readOnly: true);
+        Add("plan_ship", "Plan shipping",
+            "Posts your plan for the ship request: the version, what's in it, items still waiting for the user's review and the commands you'll run, " +
+            "following howTo. The user approves or declines it in ProJict; run nothing before it's approved. You can replace the plan until they decide.",
+            Schema(ProjectArg, ("plan", "string", "The plan, for the user.", true), ("version", "string", "The version you'll ship, if any.", false)),
+            PlanShip);
+        Add("report_ship", "Report a ship step",
+            "Once the user approved the plan: one step's outcome, e.g. the commit id, the build result or the release URL.",
+            Schema(ProjectArg, ("step", "enum:commit|build|package|push|release", "The step.", true),
+                ("outcome", "enum:done|failed|skipped", "What happened.", true), ("details", "string", "Commit id, output, URL, or why.", false)),
+            ReportShip);
+        Add("finish_ship", "Finish shipping",
+            "Ends an approved ship request: shipped, or failed with the reason.",
+            Schema(ProjectArg, ("outcome", "enum:shipped|failed", "Whether it shipped.", true), ("summary", "string", "A sentence or two for the user.", true)),
+            FinishShip);
     }
 
     public IReadOnlyList<McpTool> Tools => _tools;
@@ -125,9 +145,14 @@ public sealed class AgentTools : IMcpToolHost
         "list_items to see what is open, claim_item to check an item out before you start (other agents then can't change it), then complete_item " +
         "with a short resolution and evidence such as screenshots. Everything you do is signed with your name; if several sessions of you run at " +
         "once, call set_label first. Everything you complete waits for the user's review, so only complete what you really finished; use " +
-        "update_item with state todo if you stop. Ask the user questions or report progress with add_comment, and check list_comments for their " +
+        "update_item with state todo if you stop. The user decides which items agents may work on, by priority (current_project says which); " +
+        "the others and items on hold are off limits: list_items leaves them out, and you may read and comment on them but not check them out, " +
+        "change or complete them. Ask the user questions or report progress with add_comment, and check list_comments for their " +
         "answers. File problems you notice with add_item, and put documentation or reports for people in a note with write_doc. " +
         "Items with a gitHubIssue stand for that GitHub issue: mention \"Fixes #<number>\" in the commit or pull request that resolves one. " +
+        "When a project shows a shipRequest, the user wants it committed, built, packaged, pushed or released: read it with ship_request, post your " +
+        "plan with plan_ship and wait for their approval in ProJict; only then run the steps, report each with report_ship and end with finish_ship " +
+        "(record a published release with draft_release save=true). " +
         "Ids (items and comments) may be shortened to their first 8 characters.";
 
     public void SessionStarted(McpSession session)
@@ -177,6 +202,8 @@ public sealed class AgentTools : IMcpToolHost
         var json = ProjectJson(match.Project);
         json["matchedBy"] = match.How;
         if (!string.IsNullOrWhiteSpace(match.Project.PromptPreamble)) json["instructions"] = match.Project.PromptPreamble.Trim();
+        json["agentsMayWorkOn"] = (AgentAccess.Describe(AgentPriorities) ?? "no items at the moment (you can still read, comment and add items)") +
+                                  "; never items on hold";
         json["categories"] = new JsonArray(match.Project.Categories.Select(c => (JsonNode)new JsonObject
         {
             ["name"] = c.Name,
@@ -224,8 +251,10 @@ public sealed class AgentTools : IMcpToolHost
         {
             null => _ => true,
             Priority.None => i => i.Priority == Priority.None,
-            var min => i => i.Priority >= min,
+            Priority.Hold => i => i.Priority == Priority.Hold,
+            Priority min => i => Priorities.AtLeast(i.Priority, min),
         };
+        var includeOffLimits = args.Bool("include_off_limits") == true;
         var byPriority = args.String("sort") switch
         {
             null or "board" => false,
@@ -238,15 +267,26 @@ public sealed class AgentTools : IMcpToolHost
             (tag == null || string.Equals(l.Item.Tag, tag, StringComparison.OrdinalIgnoreCase)) &&
             (category == null || ProjectExtensions.CategoryNamesEqual(l.Category.Name, category)) &&
             terms.All(t => l.Item.SearchText().Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
-        if (byPriority) matches = matches.OrderByDescending(l => l.Item.Priority).ToList();
-        return Json(new JsonObject
+        var governing = AgentAccess.Governing(project);
+        var offLimits = matches.Count(l => !MayWork(governing, l.Item));
+        if (!includeOffLimits) matches = matches.Where(l => MayWork(governing, l.Item)).ToList();
+        if (byPriority) matches = matches.OrderByDescending(l => Priorities.Rank(l.Item.Priority)).ToList();
+        var result = new JsonObject
         {
             ["project"] = project.Name,
             ["state"] = state,
             ["total"] = matches.Count,
-            ["items"] = new JsonArray(matches.Take(limit).Select(l => (JsonNode)ItemJson(l, details: false)).ToArray()),
+            ["items"] = new JsonArray(matches.Take(limit).Select(l => (JsonNode)ItemJson(l, details: false, governing)).ToArray()),
             ["truncated"] = matches.Count > limit,
-        });
+        };
+        if (offLimits > 0)
+        {
+            result["offLimits"] = offLimits;
+            result["note"] = includeOffLimits
+                ? $"{offLimits} of these are off limits to agents (offLimits: true): you may read and comment on them, but not work on them."
+                : $"{offLimits} more matching item(s) are off limits to agents (the user's choice by priority, or on hold), so they aren't listed; include_off_limits=true lists them.";
+        }
+        return Json(result);
     }
 
     private string GetItem(McpSession session, Args args, List<Attachment> files)
@@ -260,6 +300,7 @@ public sealed class AgentTools : IMcpToolHost
         var (project, loc) = FindItem(session, args.Required("id"));
         var item = loc.Item;
         if (item.IsDone) throw new McpToolException("This item is already done. Use update_item with state todo to reopen it first.");
+        CheckMayWork(project, item);
         var takenFrom = CheckOut(session, item, args);
         var agent = session.AgentName;
         var note = args.String("note");
@@ -279,6 +320,7 @@ public sealed class AgentTools : IMcpToolHost
     {
         var (project, loc) = FindItem(session, args.Required("id"));
         var resolution = args.Required("resolution").Trim();
+        CheckMayWork(project, loc.Item);
         var takenFrom = CheckOut(session, loc.Item, args);
         var agent = session.AgentName;
         Edit(project, loc.Item.Id, i =>
@@ -307,6 +349,7 @@ public sealed class AgentTools : IMcpToolHost
             // A sub-item goes into its parent's project.
             var (parentProject, parentLoc) = FindItem(session, parentText);
             if (args.String("project") != null && ProjectFor(session, args) != parentProject) throw new McpToolException("The parent item is in another project.");
+            CheckMayWork(parentProject, parentLoc.Item);
             CheckOut(session, parentLoc.Item, args);
             project = parentProject;
             parentId = parentLoc.Item.Id;
@@ -322,7 +365,7 @@ public sealed class AgentTools : IMcpToolHost
         item.AddActivity(session.AgentName, "Added it.", agent: true);
         _main.GetProjectViewModel(project).AgentAdd(item, category, parentId);
         _state.StatusText = $"{session.AgentName} added “{Short(item.Text)}” to {project.Name}.";
-        return Json(ItemJson(project.Find(item.Id)!, details: false));
+        return Json(ItemJson(project.Find(item.Id)!, details: false, AgentAccess.Governing(project)));
     }
 
     private string UpdateItem(McpSession session, Args args, List<Attachment> files)
@@ -346,6 +389,9 @@ public sealed class AgentTools : IMcpToolHost
 
         var agent = session.AgentName;
         var changes = text != null || tag != null || priority != null || state != null;
+        // Putting an item back is always allowed, e.g. one the user put on hold while you had it.
+        var onlyPutsBack = text == null && tag == null && priority == null && state == ItemState.Todo;
+        if (changes && !onlyPutsBack) CheckMayWork(project, loc.Item);
         var takenFrom = changes ? CheckOut(session, loc.Item, args) : null;
         if (changes)
         {
@@ -382,13 +428,14 @@ public sealed class AgentTools : IMcpToolHost
         if (!string.IsNullOrWhiteSpace(comment))
             _main.GetProjectViewModel(project).PostComment(loc.Item.Id, NewComment(session, comment), null);
         _state.StatusText = $"{agent} updated “{Short(loc.Item.Text)}” ({project.Name}).";
-        return Json(ItemJson(project.Find(loc.Item.Id)!, details: false));
+        return Json(ItemJson(project.Find(loc.Item.Id)!, details: false, AgentAccess.Governing(project)));
     }
 
     private string AttachFile(McpSession session, Args args, List<Attachment> files)
     {
         var (project, loc) = FindItem(session, args.Required("id"));
         if (files.Count == 0) throw new McpToolException("Give at least one file in paths.");
+        CheckMayWork(project, loc.Item);
         var takenFrom = CheckOut(session, loc.Item, args);
         var agent = session.AgentName;
         Edit(project, loc.Item.Id, i =>
@@ -426,6 +473,19 @@ public sealed class AgentTools : IMcpToolHost
             : holder.AgentName == session.AgentName
                 ? $"Another {session.AgentName} session has this item checked out. Call set_label so your sessions can be told apart, pick another item, or pass force=true to take it over."
                 : $"{item.ClaimedBy} has this item checked out and is still connected. Talk to it or the user with add_comment, pick another item, or pass force=true to take it over.");
+    }
+
+    /// <summary>The priorities of items agents may work on (Settings › AI agents).</summary>
+    private IReadOnlyCollection<Priority> AgentPriorities => _state.Settings.AgentPriorities;
+
+    private bool MayWork(Dictionary<TodoItem, Priority> governing, TodoItem item) =>
+        AgentAccess.Allows(AgentPriorities, governing.GetValueOrDefault(item));
+
+    /// <summary>Refuses a change to an item the user keeps off limits to agents; reading and commenting stay open.</summary>
+    private void CheckMayWork(Project project, TodoItem item)
+    {
+        if (AgentAccess.Refusal(AgentPriorities, AgentAccess.Governing(project).GetValueOrDefault(item)) is { } why)
+            throw new McpToolException(why + " You can still read it, and comment on it with add_comment (e.g. to ask the user).");
     }
 
     /// <summary>The session checked the item out, and nobody (another agent, the user) changed that since.</summary>
@@ -600,6 +660,112 @@ public sealed class AgentTools : IMcpToolHost
         return Json(result);
     }
 
+    // ───────────── Shipping ─────────────
+
+    private string ShipRequestInfo(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var settings = ShipFlow.SettingsOf(project);
+        var request = project.OpenShip;
+        var json = new JsonObject
+        {
+            ["project"] = project.Name,
+            ["request"] = request == null ? null : ShipJson(request),
+            ["steps"] = new JsonArray(settings.Steps.Select(s => (JsonNode)ShipFlow.Name(s)).ToArray()),
+            ["howTo"] = settings.HowTo ?? "(not written yet: find out from the repository, e.g. its build scripts and README, and say so in your plan)",
+        };
+        if (request == null && project.Ships?.LastOrDefault() is { } last) json["lastRequest"] = ShipJson(last);
+        json["suggestedVersion"] = PatchNotesBuilder.SuggestNextVersion(project);
+        json["finishedSinceLastRelease"] = PatchNotesBuilder.Candidates(project).Count;
+        json["waitingForReview"] = new JsonArray(project.Walk().Where(l => l.Item.NeedsReview)
+            .Select(l => (JsonNode)new JsonObject { ["id"] = ShortId(l.Item.Id), ["text"] = Short(l.Item.Text) }).ToArray());
+        json["next"] = request?.State switch
+        {
+            null => "No ship request: only the user can ask for one (the Ship button in ProJict).",
+            ShipState.Requested => "Prepare a plan following howTo (version, what's in it, the items still waiting for review, the commands you'll run) " +
+                                   "and post it with plan_ship. Run nothing yet.",
+            ShipState.Planned => "Your plan waits for the user's approval in ProJict. Run nothing yet; ask them to look at it if they're around.",
+            _ => "Approved: run the steps following howTo, report each with report_ship, then finish_ship.",
+        };
+        return Json(json);
+    }
+
+    private static JsonObject ShipJson(ShipRequest request)
+    {
+        var json = new JsonObject
+        {
+            ["state"] = request.State.ToString().ToLowerInvariant(),
+            ["steps"] = new JsonArray(request.Steps.Select(s => (JsonNode)ShipFlow.Name(s)).ToArray()),
+            ["requestedBy"] = request.RequestedBy,
+            ["requestedAt"] = request.RequestedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+        };
+        if (request.State == ShipState.Approved && request.DecidedBy == null) json["withoutApproval"] = true;
+        if (request.Plan != null) json["plan"] = request.Plan;
+        if (request.Version != null) json["version"] = request.Version;
+        if (request.DecidedBy != null) json["decidedBy"] = request.DecidedBy;
+        json["log"] = new JsonArray(request.Log.Select(e => (JsonNode)$"{e.At.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} {e.By}: {e.Text}").ToArray());
+        return json;
+    }
+
+    private string PlanShip(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var request = OpenShip(project);
+        var plan = args.Required("plan");
+        ChangeShip(project, () => ShipFlow.Plan(request, plan, args.String("version"), session.AgentName));
+        var waits = request.State == ShipState.Planned;
+        _state.StatusText = waits ? $"{session.AgentName} planned shipping {project.Name}: it waits for your approval."
+            : $"{session.AgentName} planned shipping {project.Name}.";
+        return Json(new JsonObject
+        {
+            ["state"] = request.State.ToString().ToLowerInvariant(),
+            ["next"] = waits ? "Wait for the user's approval (ship_request shows it); run nothing yet."
+                : "It runs without approval: go ahead, report each step with report_ship, then finish_ship.",
+        });
+    }
+
+    private string ReportShip(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var request = OpenShip(project);
+        var step = Enum.TryParse<ShipStep>(args.Required("step"), ignoreCase: true, out var s) && Enum.IsDefined(s) ? s
+            : throw new McpToolException("step must be commit, build, package, push or release.");
+        var outcome = args.Required("outcome").Trim().ToLowerInvariant() switch
+        {
+            "done" => ShipFlow.Outcome.Done,
+            "failed" => ShipFlow.Outcome.Failed,
+            "skipped" => ShipFlow.Outcome.Skipped,
+            _ => throw new McpToolException("outcome must be done, failed or skipped."),
+        };
+        ChangeShip(project, () => ShipFlow.Report(request, step, outcome, args.String("details"), session.AgentName));
+        _state.StatusText = $"{session.AgentName}: {request.Log[^1].Text}";
+        return Json(new JsonObject { ["state"] = request.State.ToString().ToLowerInvariant(), ["logged"] = request.Log[^1].Text });
+    }
+
+    private string FinishShip(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var request = OpenShip(project);
+        var shipped = args.Required("outcome").Trim().ToLowerInvariant() switch
+        {
+            "shipped" => true,
+            "failed" => false,
+            _ => throw new McpToolException("outcome must be shipped or failed."),
+        };
+        ChangeShip(project, () => ShipFlow.Finish(request, shipped, args.Required("summary"), session.AgentName));
+        _state.StatusText = shipped ? $"{session.AgentName} shipped {project.Name}." : $"{session.AgentName} couldn't ship {project.Name}.";
+        return Json(new JsonObject { ["state"] = request.State.ToString().ToLowerInvariant() });
+    }
+
+    private static ShipRequest OpenShip(Project project) =>
+        project.OpenShip ?? throw new McpToolException($"{project.Name} has no ship request: only the user can ask for one (the Ship button in ProJict).");
+
+    private void ChangeShip(Project project, Action change)
+    {
+        try { _main.GetProjectViewModel(project).ChangeShip(change); }
+        catch (InvalidOperationException ex) { throw new McpToolException(ex.Message); }
+    }
+
     // ───────────── Lookups ─────────────
 
     /// <summary>The project a call is about; the agent counts as working in it from then on.</summary>
@@ -650,7 +816,7 @@ public sealed class AgentTools : IMcpToolHost
     }
 
     private static Priority? PriorityArgument(Args args) => args.String("priority") is { } text
-        ? Priorities.Parse(text) ?? throw new McpToolException("priority must be urgent, high, medium, low or none.")
+        ? Priorities.Parse(text) ?? throw new McpToolException("priority must be urgent, high, medium, low, hold or none.")
         : null;
 
     private void Edit(Project project, Guid itemId, Action<TodoItem> change) =>
@@ -682,10 +848,12 @@ public sealed class AgentTools : IMcpToolHost
         json["inProgress"] = stats.InProgress;
         json["done"] = stats.Done;
         if (stats.ToReview > 0) json["toReview"] = stats.ToReview;
+        if (p.OpenShip is { } ship) json["shipRequest"] = $"{ShipFlow.Describe(ship.Steps)}, {ShipFlow.StateName(ship.State)} (ship_request has it all)";
         return json;
     }
 
-    private JsonObject ItemJson(ItemLocation loc, bool details)
+    /// <summary>The item for an agent; <paramref name="governing"/> (AgentAccess.Governing) marks what is off limits.</summary>
+    private JsonObject ItemJson(ItemLocation loc, bool details, Dictionary<TodoItem, Priority> governing)
     {
         var item = loc.Item;
         var json = new JsonObject
@@ -700,6 +868,7 @@ public sealed class AgentTools : IMcpToolHost
         if (loc.Parent != null) json["parent"] = ShortId(loc.Parent.Id);
         if (item.ClaimedBy != null && item.State == ItemState.InProgress) json["checkedOutBy"] = item.ClaimedBy;
         if (item.NeedsReview) json["needsReview"] = true;
+        if (!MayWork(governing, item)) json["offLimits"] = true;
         if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
         if (item.Issue is { } issue)
         {
@@ -716,7 +885,7 @@ public sealed class AgentTools : IMcpToolHost
             if (item.Comments is { Count: > 0 } threads)
                 json["discussion"] = new JsonArray(threads.Select(c => (JsonNode)CommentJson(c, nested: true)).ToArray());
             if (item.Children.Count > 0)
-                json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c)).ToArray());
+                json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c, governing)).ToArray());
         }
         else
         {
@@ -726,14 +895,15 @@ public sealed class AgentTools : IMcpToolHost
         return json;
     }
 
-    private JsonObject ChildJson(TodoItem item)
+    private JsonObject ChildJson(TodoItem item, Dictionary<TodoItem, Priority> governing)
     {
         var json = new JsonObject { ["id"] = ShortId(item.Id), ["text"] = item.Text, ["state"] = StateName(item.State) };
         if (item.Tag != null) json["tag"] = item.Tag;
         if (item.Priority != Priority.None) json["priority"] = item.Priority.ToString().ToLowerInvariant();
+        if (!MayWork(governing, item)) json["offLimits"] = true;
         if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
         if (item.Comments.CountComments() is > 0 and var count) json["comments"] = count;
-        if (item.Children.Count > 0) json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c)).ToArray());
+        if (item.Children.Count > 0) json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c, governing)).ToArray());
         return json;
     }
 
@@ -754,7 +924,10 @@ public sealed class AgentTools : IMcpToolHost
 
     private JsonObject ItemDetails(Project project, ItemLocation loc)
     {
-        var json = ItemJson(loc, details: true);
+        var governing = AgentAccess.Governing(project);
+        var json = ItemJson(loc, details: true, governing);
+        // Why, instead of just true, so the agent can tell the user.
+        if (AgentAccess.Refusal(AgentPriorities, governing.GetValueOrDefault(loc.Item)) is { } why) json["offLimits"] = why;
         var context = new JsonObject { ["name"] = project.Name };
         if (!string.IsNullOrWhiteSpace(project.RepoPath)) context["repoPath"] = project.RepoPath;
         if (!string.IsNullOrWhiteSpace(project.GitHubUrl)) context["gitHub"] = project.GitHubUrl;
@@ -795,7 +968,7 @@ public sealed class AgentTools : IMcpToolHost
     private static readonly (string, string, string, bool) IdArg =
         ("id", "string", "Item id (the first 8 characters are enough).", true);
     private static readonly (string, string, string, bool) PriorityArg =
-        ("priority", "enum:urgent|high|medium|low|none", "How pressing it is; none removes the priority.", false);
+        ("priority", "enum:urgent|high|medium|low|hold|none", "How pressing it is; hold parks it (agents then leave it alone), none removes the priority.", false);
     private static readonly (string, string, string, bool) ForceArg =
         ("force", "boolean", "Take the item over from another agent that has it checked out (recorded in its history).", false);
 

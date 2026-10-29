@@ -1,3 +1,4 @@
+using ProJict.Core.Agents;
 using ProJict.Core.Model;
 
 namespace ProJict.Core.Storage;
@@ -91,6 +92,8 @@ public sealed class WorkspaceSettings
     /// <summary>The board lists open items by priority (most pressing first) instead of in their own order.</summary>
     public bool SortByPriority { get; set; }
     public bool MarkCopiedInProgress { get; set; }
+    /// <summary>The priorities of items AI agents may work on (None = items without one); items on hold never. See AgentAccess.</summary>
+    public List<Priority> AgentPriorities { get; set; } = [.. AgentAccess.DefaultPriorities];
     public Guid? LastCaptureProjectId { get; set; }
     public string? LastCaptureCategory { get; set; }
     /// <summary>Projects left out of the sidebar list and the dashboard (shown again from either eye dropdown).</summary>

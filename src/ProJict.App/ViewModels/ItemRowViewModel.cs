@@ -49,7 +49,9 @@ public sealed partial class ItemRowViewModel : ObservableObject
     public bool HasTag => !string.IsNullOrWhiteSpace(Item.Tag);
     public Priority Priority => Item.Priority;
     public bool HasPriority => Item.Priority != Priority.None;
-    public string PriorityToolTip => $"{Item.Priority} priority · click to change (Alt+1 urgent … Alt+4 low, Alt+0 none)";
+    public string PriorityText => Priorities.Label(Item.Priority);
+    public string PriorityToolTip => (Item.Priority == Priority.Hold ? "On hold: AI agents leave it alone" : $"{Item.Priority} priority") +
+                                     " · click to change (Alt+1 urgent … Alt+4 low, Alt+5 on hold, Alt+0 none)";
     public bool IsDone => Item.IsDone;
     public bool IsInProgress => Item.State == ItemState.InProgress;
     /// <summary>A done child still listed under an open parent (shown struck through).</summary>

@@ -76,9 +76,11 @@ public sealed partial class ProjectViewModel : ObservableObject
         new("High and up", Priority.High),
         new("Medium and up", Priority.Medium),
         new("Any priority", Priority.Low),
-        new("No priority", null, NoneOnly: true),
+        new("No priority", null, Only: Priority.None),
+        new("On hold", null, Only: Priority.Hold),
     ];
-    public static IReadOnlyList<Priority> PriorityChoices { get; } = [Priority.Urgent, Priority.High, Priority.Medium, Priority.Low];
+    /// <summary>In menu order, which is also Alt+1 … Alt+5.</summary>
+    public static IReadOnlyList<Priority> PriorityChoices { get; } = [Priority.Urgent, Priority.High, Priority.Medium, Priority.Low, Priority.Hold];
     public bool IsInbox => Project.IsInbox;
     public bool IsNotInbox => !Project.IsInbox;
 
@@ -197,6 +199,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         foreach (var p in new[] { nameof(Name), nameof(Key), nameof(FilePrefix), nameof(Group), nameof(Status), nameof(RepoPath), nameof(GitHubUrl), nameof(PromptPreamble), nameof(Description) })
             OnPropertyChanged(p);
         RefreshIssueSync();
+        RefreshShip();
     }
 
     // ───────────── Board state ─────────────
@@ -210,7 +213,24 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
     partial void OnTagFilterChanged(string value) => ApplyFilter();
-    partial void OnStateFilterChanged(StateFilterOption value) => ApplyFilter();
+    partial void OnStateFilterChanged(StateFilterOption value)
+    {
+        OnPropertyChanged(nameof(ShowWorkingOn));
+        ApplyFilter();
+    }
+
+    /// <summary>
+    /// The toolbar's "Working on" toggle: only items someone is on, i.e. checked out by an AI agent or marked in progress.
+    /// A shortcut for the state filter's "In progress", so the two never disagree.
+    /// </summary>
+    public bool ShowWorkingOn
+    {
+        get => StateFilter == StateFilters[2];
+        set
+        {
+            if (value != ShowWorkingOn) StateFilter = value ? StateFilters[2] : StateFilters[0];
+        }
+    }
 
     partial void OnShowDoneChanged(bool value)
     {
@@ -262,7 +282,12 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (row.Item.Priority == priority) return;
         // Redrawn rather than refreshed: when sorting by priority the item moves.
         Mutate(() => row.Item.Priority = priority, [row.Category], row.Item.Id);
-        _state.StatusText = priority == Priority.None ? "Priority removed." : $"Priority set to {priority}.";
+        _state.StatusText = priority switch
+        {
+            Priority.None => "Priority removed.",
+            Priority.Hold => "Put on hold: AI agents leave it alone.",
+            _ => $"Priority set to {priority}.",
+        };
     }
 
     /// <summary>Reordering by hand doesn't mix with a board sorted by priority; true (with a hint) when it's sorted.</summary>
@@ -720,7 +745,20 @@ public sealed partial class ProjectViewModel : ObservableObject
     {
         var index = Project.Categories.IndexOf(category.Model);
         var target = index + delta;
-        if (target < 0 || target >= Project.Categories.Count) return;
+        if (target < 0 || target >= Project.Categories.Count || Refused(EditKind.Edit)) return;
+        Checkpoint();
+        Project.Categories.RemoveAt(index);
+        Project.Categories.Insert(target, category.Model);
+        Touch();
+        RebuildAll();
+    }
+
+    /// <summary>Moves a category to the top of the board, or to the bottom.</summary>
+    public void MoveCategoryToEnd(CategoryViewModel category, bool top)
+    {
+        var index = Project.Categories.IndexOf(category.Model);
+        var target = top ? 0 : Project.Categories.Count - 1;
+        if (index < 0 || index == target || Refused(EditKind.Edit)) return;
         Checkpoint();
         Project.Categories.RemoveAt(index);
         Project.Categories.Insert(target, category.Model);
@@ -730,7 +768,7 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public void MoveCategoryTo(CategoryViewModel category, CategoryViewModel target)
     {
-        if (category == target) return;
+        if (category == target || Refused(EditKind.Edit)) return;
         Checkpoint();
         Project.Categories.Remove(category.Model);
         Project.Categories.Insert(Project.Categories.IndexOf(target.Model), category.Model);
@@ -1242,6 +1280,188 @@ public sealed partial class ProjectViewModel : ObservableObject
         SyncIssuesCommand.NotifyCanExecuteChanged();
     }
 
+    // ───────────── Shipping ─────────────
+
+    /// <summary>Your own projects can be shipped (not the Inbox, nor another ProJict's project).</summary>
+    public bool CanShip => !Project.IsInbox && Project.Remote == null;
+
+    /// <summary>The request the board's card shows: the open one, else the last one until its card is closed.</summary>
+    public ShipRequest? Ship => CanShip && Project.Ships?.LastOrDefault() is { } last && (last.IsOpen || !last.Dismissed) ? last : null;
+
+    /// <summary>Choosing the steps of a new request, in the card on the board.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasShipCard), nameof(ShowShipRequest))]
+    private bool _isComposingShip;
+
+    public bool HasShipCard => IsComposingShip || Ship != null;
+    public bool ShowShipRequest => !IsComposingShip && Ship != null;
+    public IReadOnlyList<ShipStepChoice> ShipChoices { get; private set; } = [];
+
+    public string ShipTitle => Ship is not { } s ? ""
+        : (s.Version is { } v ? $"Shipping {v}: " : "Shipping: ") + ShipFlow.Describe(s.Steps);
+    public string ShipStateText => Ship is { } s ? char.ToUpperInvariant(ShipFlow.StateName(s.State)[0]) + ShipFlow.StateName(s.State)[1..] : "";
+    public string? ShipStatusText => Ship switch
+    {
+        null => null,
+        { State: ShipState.Requested } => "An AI agent working in this project will post its plan here for you to approve. Nothing runs before that.",
+        { State: ShipState.Planned } s => $"{s.PlannedBy} planned it. Nothing runs until you approve.",
+        { State: ShipState.Approved, DecidedBy: null } => "Runs without approval (Details › Shipping): an AI agent working in this project can go ahead.",
+        { State: ShipState.Approved } s => $"Approved by {s.DecidedBy}: {s.PlannedBy ?? "an AI agent"} can go ahead.",
+        { State: ShipState.Running } => "Running: each step is reported below.",
+        { State: ShipState.Done } => "Shipped.",
+        { State: ShipState.Failed } => "It didn't ship; the log below says why.",
+        { State: ShipState.Declined } => "The plan was declined.",
+        _ => "The request was withdrawn.",
+    };
+    public string? ShipPlan => Ship?.Plan;
+    public bool HasShipPlan => Ship?.Plan != null;
+    public IReadOnlyList<ShipLogLine> ShipLog => (Ship?.Log ?? []).Select(e => new ShipLogLine(e)).ToList();
+    public bool ShipWaitsForYou => Ship?.State == ShipState.Planned;
+    public bool CanWithdrawShip => Ship?.IsOpen == true;
+    public bool CanDismissShip => Ship is { IsOpen: false };
+
+    [RelayCommand]
+    private void StartShip()
+    {
+        if (!CanShip) return;
+        SelectedTab = 0;
+        if (Project.OpenShip != null)
+        {
+            _state.StatusText = "There's a ship request already; withdraw it to ask for something else.";
+            return;
+        }
+        ShipChoices = ShipFlow.SettingsOf(Project).Steps.Order().Select(s => new ShipStepChoice(s, true)).ToList();
+        OnPropertyChanged(nameof(ShipChoices));
+        IsComposingShip = true;
+    }
+
+    [RelayCommand] private void CancelShipRequest() => IsComposingShip = false;
+
+    [RelayCommand]
+    private void RequestShip()
+    {
+        if (!CanShip) return;
+        if (!TryShip(() => ShipFlow.Request(Project, ShipChoices.Where(c => c.IsChecked).Select(c => c.Step), _state.UserName))) return;
+        IsComposingShip = false;
+        _state.StatusText = Project.OpenShip?.State == ShipState.Approved
+            ? "Asked to ship: an AI agent working in this project can go ahead."
+            : "Asked to ship: an AI agent working in this project will post a plan for you to approve.";
+    }
+
+    [RelayCommand]
+    private void ApproveShip()
+    {
+        if (Ship is { } s && TryShip(() => ShipFlow.Decide(s, approve: true, _state.UserName)))
+            _state.StatusText = $"Approved: {s.PlannedBy ?? "the agent"} can ship it.";
+    }
+
+    [RelayCommand]
+    private void DeclineShip()
+    {
+        if (Ship is { } s && TryShip(() => ShipFlow.Decide(s, approve: false, _state.UserName))) _state.StatusText = "Declined the plan.";
+    }
+
+    [RelayCommand]
+    private void WithdrawShip()
+    {
+        if (Ship is { } s && TryShip(() => ShipFlow.Withdraw(s, _state.UserName))) _state.StatusText = "Ship request withdrawn.";
+    }
+
+    [RelayCommand]
+    private void DismissShip()
+    {
+        if (Ship is not { IsOpen: false } s) return;
+        s.Dismissed = true;
+        Touch();
+        RefreshShip();
+    }
+
+    /// <summary>The board shows this request's card again (from the Feed).</summary>
+    public void RevealShip(ShipRequest request)
+    {
+        SelectedTab = 0;
+        if (Project.Ships?.LastOrDefault() != request || !request.Dismissed) return;
+        request.Dismissed = false;
+        Touch();
+        RefreshShip();
+    }
+
+    /// <summary>
+    /// Changes a ship request (yours here, an agent's through its tools). Not part of undo: requests stand for commits
+    /// and releases that really happened, and for what you approved. Throws InvalidOperationException with the reason.
+    /// </summary>
+    public void ChangeShip(Action change)
+    {
+        change();
+        Touch();
+        RefreshShip();
+    }
+
+    private bool TryShip(Action change)
+    {
+        try
+        {
+            ChangeShip(change);
+            return true;
+        }
+        catch (InvalidOperationException ex)
+        {
+            _state.StatusText = ex.Message;
+            return false;
+        }
+    }
+
+    public void RefreshShip()
+    {
+        _shipSteps = null;
+        foreach (var p in new[] { nameof(CanShip), nameof(Ship), nameof(HasShipCard), nameof(ShowShipRequest), nameof(ShipTitle), nameof(ShipStateText),
+                     nameof(ShipStatusText), nameof(ShipPlan), nameof(HasShipPlan), nameof(ShipLog), nameof(ShipWaitsForYou), nameof(CanWithdrawShip),
+                     nameof(CanDismissShip), nameof(ShipSteps), nameof(ShipHowTo), nameof(ShipLocalWithoutApproval) })
+            OnPropertyChanged(p);
+    }
+
+    // Details › Shipping: not part of undo either, like the other details.
+
+    private IReadOnlyList<ShipStepChoice>? _shipSteps;
+
+    /// <summary>The steps this project has; a project without some (e.g. nothing to package) isn't offered them.</summary>
+    public IReadOnlyList<ShipStepChoice> ShipSteps => _shipSteps ??= Enum.GetValues<ShipStep>()
+        .Select(s => new ShipStepChoice(s, ShipFlow.SettingsOf(Project).Steps.Contains(s), c => ChangeShipSettings(settings =>
+        {
+            settings.Steps.Remove(c.Step);
+            if (c.IsChecked) settings.Steps.Add(c.Step);
+            settings.Steps.Sort();
+        }))).ToList();
+
+    public string? ShipHowTo
+    {
+        get => Project.Shipping?.HowTo;
+        set
+        {
+            if (value == ShipHowTo) return;
+            ChangeShipSettings(s => s.HowTo = Blank(value));
+            OnPropertyChanged();
+        }
+    }
+
+    public bool ShipLocalWithoutApproval
+    {
+        get => Project.Shipping?.LocalWithoutApproval == true;
+        set
+        {
+            if (value == ShipLocalWithoutApproval) return;
+            ChangeShipSettings(s => s.LocalWithoutApproval = value);
+            OnPropertyChanged();
+        }
+    }
+
+    private void ChangeShipSettings(Action<ShipSettings> change)
+    {
+        if (!CanShip) return;
+        change(Project.Shipping ??= new ShipSettings());
+        Touch();
+    }
+
     // ───────────── Discussions ─────────────
 
     /// <summary>Opens the discussion of an item or category of this project in the side panel.</summary>
@@ -1500,12 +1720,33 @@ public sealed partial class ProjectViewModel : ObservableObject
     }
 }
 
-/// <summary>A choice in the board's priority menu: items at least as pressing as <paramref name="AtLeast"/>, or only those without a priority.</summary>
-public sealed record PriorityFilterOption(string Label, Priority? AtLeast, bool NoneOnly = false)
+/// <summary>A choice in the board's priority menu: items at least as pressing as <paramref name="AtLeast"/>, or only those with priority <paramref name="Only"/> (none, on hold).</summary>
+public sealed record PriorityFilterOption(string Label, Priority? AtLeast, Priority? Only = null)
 {
-    public bool IsActive => AtLeast != null || NoneOnly;
-    public bool Matches(TodoItem item) => NoneOnly ? item.Priority == Priority.None : AtLeast is not { } min || item.Priority >= min;
+    public bool IsActive => AtLeast != null || Only != null;
+    public bool Matches(TodoItem item) => Only is { } only ? item.Priority == only : AtLeast is not { } min || Priorities.AtLeast(item.Priority, min);
     public override string ToString() => Label;
+}
+
+/// <summary>A step to tick: in a new ship request, or among the steps a project has (Details).</summary>
+public sealed partial class ShipStepChoice(ShipStep step, bool isChecked, Action<ShipStepChoice>? changed = null) : ObservableObject
+{
+    public ShipStep Step { get; } = step;
+    public string Label => Step.ToString();
+    public string ToolTip => ShipFlow.Publishes(Step) ? "Publishes: always needs your approval" : "Stays on this computer";
+
+    [ObservableProperty] private bool _isChecked = isChecked;
+
+    partial void OnIsCheckedChanged(bool value) => changed?.Invoke(this);
+}
+
+/// <summary>One line of a ship request's log: "21:40  Claude Code  Finished the commit step: 951c7c5".</summary>
+public sealed class ShipLogLine(ActivityEntry entry)
+{
+    public string Time => entry.At.ToString(entry.At.Date == DateTime.Today ? "HH:mm" : "d MMM HH:mm", System.Globalization.CultureInfo.CurrentCulture);
+    public string By => entry.By;
+    public bool IsAgent => entry.Agent;
+    public string Text => entry.Text;
 }
 
 /// <summary>A choice in the board's state filter; State is null for "All states".</summary>

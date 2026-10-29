@@ -26,6 +26,9 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     /// <summary>A red dot: an unread comment or an agent's work to review somewhere in the project.</summary>
     public bool NeedsAttention => main.State.NeedsAttention(Project);
     public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
+    /// <summary>A ship request in progress shows as a glyph next to the count (and the red dot while its plan waits for you).</summary>
+    public bool HasShip => Project.OpenShip != null;
+    public string? ShipToolTip => Project.OpenShip is { } s ? $"Ship request ({ShipFlow.Describe(s.Steps)}): {ShipFlow.StateName(s.State)}" : null;
 
     /// <summary>Projects offered under "Copy categories from" in the right-click menu.</summary>
     public List<TemplateSourceViewModel> TemplateSources => main.TemplateSourcesFor(Project);
@@ -532,6 +535,14 @@ public sealed partial class MainViewModel : ObservableObject
         if (_projectViewModels.TryGetValue(project.Id, out var vm)) vm.RefreshGroups();
         State.NotifyListChanged();
         State.StatusText = $"Moved {project.Name} to {group}.";
+    }
+
+    /// <summary>Right-click › Ship…: opens the project with a new ship request to fill in.</summary>
+    [RelayCommand]
+    private void ShipProject(ProjectListItemViewModel? item)
+    {
+        if (item == null || NotYours(item.Project) || item.Project.IsInbox) return;
+        OpenProject(item.Project).StartShipCommand.Execute(null);
     }
 
     [RelayCommand]

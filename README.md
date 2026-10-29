@@ -25,7 +25,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 | Tab / Shift+Tab | make it a sub-item / move it back out |
 | Ctrl+Enter | mark done / not done |
 | Ctrl+I | mark in progress |
-| Alt+1 … Alt+4 / Alt+0 | priority urgent … low / no priority |
+| Alt+1 … Alt+4 / Alt+5 / Alt+0 | priority urgent … low / on hold / no priority |
 | Alt+↑ / Alt+↓ | move the item up or down |
 | Ctrl+Shift+Del | delete the item |
 | Ctrl+Z / Ctrl+Y | undo / redo |
@@ -38,9 +38,9 @@ Right-click an item, or click the **⋯** that appears on its right when you poi
 
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
-Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done.
+Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done. **Working on** shows only the items someone is on: checked out by an AI agent or marked in progress.
 
-Give an item a priority (urgent, high, medium or low) from its right-click menu or with Alt+1 to Alt+4. The **Priority** button above the board sorts open items by priority and can show only items of some priority (e.g. high and up). Sorting only changes what you see: your own order stays and is what exports use. While the board is sorted, items can't be dragged or moved.
+Give an item a priority (urgent, high, medium or low) from its right-click menu or with Alt+1 to Alt+4. **On hold** (Alt+5) parks an item: it sorts last, and AI agents leave it alone. The **Priority** button above the board sorts open items by priority and can show only items of some priority (e.g. high and up, or on hold). Sorting only changes what you see: your own order stays and is what exports use. While the board is sorted, items can't be dragged or moved.
 
 ## Text files
 
@@ -61,7 +61,7 @@ HUD
 
 AI coding agents such as Claude Code can work in ProJict through the Model Context Protocol (MCP). An agent finds the project for the folder it works in, checks out an item, and completes it with a short resolution and screenshots. Agents and you can talk it over in the item's discussion.
 
-**Set up:** open **Settings → AI agents & comments → Connect an AI agent**, pick your agent (Claude Code, OpenAI Codex, OpenCode, or Claude Desktop and other MCP clients) and copy its setup. For Claude Code it's one command to run in a terminal, like this:
+**Set up:** open **Settings → AI agents → Connect an AI agent**, pick your agent (Claude Code, OpenAI Codex, OpenCode, or Claude Desktop and other MCP clients) and copy its setup. For Claude Code it's one command to run in a terminal, like this:
 
 ```
 claude mcp add --scope user projict -- "C:\Users\<you>\AppData\Local\Programs\ProJict\ProJict.exe" --mcp
@@ -70,12 +70,19 @@ claude mcp add --scope user projict -- "C:\Users\<you>\AppData\Local\Programs\Pr
 Other MCP clients run the same program with `--mcp`. If ProJict isn't running, it starts in the tray.
 
 - **What agents can do:** list projects and items, check out an item, complete it with a resolution and files, add items and sub-items, attach files, comment, write notes (for example a status report) and draft release notes. They can't delete anything, the board updates as they work, and Ctrl+Z undoes any change.
+- **Which items:** agents work only on items you give a priority (urgent, high, medium or low) by default; choose which under **Settings → AI agents**, including items without a priority. Items on hold are always left alone. Agents still see and can comment on the other items, for example to ask you, but can't check them out, change or complete them. A sub-item without a priority of its own goes by the item it belongs to.
 - **Check-out:** while an agent has an item checked out (its name shows on the item), other agents can't change it, only comment on it. Taking it over is possible but is written to the item's history. If an agent stops halfway, right-click the item › **Release check-out**. You can always edit any item yourself.
-- **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → AI agents & comments**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
+- **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → Comments & history**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
 - **Review:** an item an agent completes gets a **review** chip. Check the work, then click the chip to accept it, or mark the item to do to send it back. The dashboard lists everything waiting for review and what agents did recently, and **All states → Needs review** filters the board.
 - **Who's working where:** while an agent is connected, a badge with its initials shows next to each project it works in, in the sidebar and on the dashboard.
 - **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
-- Turn agent access off under **Settings → AI agents & comments**. Only programs running under your Windows account can connect; nothing is opened to the network.
+- Turn agent access off under **Settings → AI agents**. Only programs running under your Windows account can connect; nothing is opened to the network.
+
+### Shipping
+
+Click **Ship** in a project's header (or right-click the project › **Ship…**) and tick what you want done: commit, build, package, push and/or release. An AI agent working in the project sees the request and posts its plan on the board: the version, what's in it, the items still waiting for your review and what it will run. **Approve** or **Decline** it there; nothing runs before you approve. The agent then runs the steps and reports each one under the plan, and the request shows in the sidebar, on the dashboard and in the Feed.
+
+How a project is shipped goes in its **Details → Shipping**: the steps it has and the instructions the agent follows (e.g. bump the version, run the build script, test, commit, push, publish the release). Push and release always need your approval; commit, build and package can run without asking if you tick that for the project.
 
 ## Sharing
 
@@ -89,7 +96,7 @@ Other people on your network can work in your projects live, from their own ProJ
 
 ## Discussions
 
-Items, categories and groups each have a discussion with threaded replies, for you and AI agents alike. Open one from an item's right-click menu (or its speech-bubble chip), the speech bubble in a category's header, or by right-clicking a group heading in the sidebar › **Discussion**. It opens beside the board. Reply to any comment to start a sub-thread, and press Ctrl+Enter to post. A red dot marks comments you haven't read yet, on the discussion's chip and on folded categories, folded Done lists, group headings and projects in the sidebar that hold some. Folded sections and projects also get one for an AI agent's work waiting for your review. Opening the discussion clears its dot. Deleting a comment that has replies keeps the replies. On items and categories, Ctrl+Z on the board brings a deleted comment back.
+Items, categories and groups each have a discussion with threaded replies, for you and AI agents alike. Open one from an item's right-click menu (or its speech-bubble chip), the speech bubble in a category's header, or by right-clicking a group heading in the sidebar › **Discussion**. It opens beside the board. Reply to any comment to start a sub-thread, and press Ctrl+Enter to post. Select any part of a comment to copy it (Ctrl+C or right-click › Copy), or copy a whole comment with the copy button that appears when you point at it. A red dot marks comments you haven't read yet, on the discussion's chip and on folded categories, folded Done lists, group headings and projects in the sidebar that hold some. Folded sections and projects also get one for an AI agent's work waiting for your review. Opening the discussion clears its dot. Deleting a comment that has replies keeps the replies. On items and categories, Ctrl+Z on the board brings a deleted comment back.
 
 ## More
 

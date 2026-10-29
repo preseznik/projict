@@ -183,6 +183,28 @@
         </Style.Triggers>
     </Style>
 
+    <!-- Text that reads like a TextBlock but can be selected and copied (Ctrl+C, right-click › Copy). Its host is a plain
+         Decorator rather than a ScrollViewer, so the mouse wheel still scrolls whatever the text sits in. -->
+    <Style x:Key="SelectableText" TargetType="TextBox">
+        <Setter Property="IsReadOnly" Value="True" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TextBox">
+                    <Decorator x:Name="PART_ContentHost" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- A red dot: a comment you haven't read, or something else waiting for you. -->
     <Style x:Key="UnreadDot" TargetType="Ellipse">
         <Setter Property="Width" Value="8" />

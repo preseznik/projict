@@ -20,13 +20,16 @@
                                 <Run Text="{Binding By, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="   " /><Run Text="{Binding WhenText, Mode=OneWay}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             </TextBlock>
                             <StackPanel x:Name="Actions" Grid.Column="2" Orientation="Horizontal" Opacity="0">
+                                <Button x:Name="CopyButton" Style="{StaticResource SubtleIconButton}" FontSize="12" Padding="5,3" Content="&#xE8C8;"
+                                        ToolTip="Copy the comment (or select part of it and press Ctrl+C)" AutomationProperties.Name="Copy comment" Command="{Binding CopyCommand}" />
                                 <Button Style="{StaticResource SubtleIconButton}" FontSize="12" Padding="5,3" Content="&#xE97A;" ToolTip="Reply"
                                         AutomationProperties.Name="Reply" Command="{Binding ReplyCommand}" />
                                 <Button Style="{StaticResource SubtleIconButton}" FontSize="12" Padding="5,3" Content="&#xE74D;" ToolTip="Delete"
                                         AutomationProperties.Name="Delete comment" Command="{Binding DeleteCommand}" />
                             </StackPanel>
                         </Grid>
-                        <TextBlock x:Name="Text" Text="{Binding Text}" TextWrapping="Wrap" Margin="18,2,4,0" />
+                        <TextBox x:Name="Text" Style="{StaticResource SelectableText}" Text="{Binding Text, Mode=OneWay}" Margin="18,2,4,0"
+                                 AutomationProperties.Name="Comment" />
                         <StackPanel Margin="18,6,0,0" Visibility="{Binding IsReplying, Converter={StaticResource BoolToVis}}">
                             <TextBox Text="{Binding ReplyText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
                                      MinHeight="54" MaxHeight="160" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Reply"
@@ -54,6 +57,7 @@
                 <DataTrigger Binding="{Binding IsDeleted}" Value="True">
                     <Setter TargetName="Text" Property="FontStyle" Value="Italic" />
                     <Setter TargetName="Text" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                    <Setter TargetName="CopyButton" Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>

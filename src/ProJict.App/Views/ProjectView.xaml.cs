@@ -64,7 +64,7 @@ public partial class ProjectView : UserControl
     /// <summary>The toolbar's width with labels and the filter box at its narrowest, and the space around it in this view.</summary>
     private double _fullToolbarWidth, _toolbarChrome, _offeredWidth;
 
-    private TextBlock[] ToolbarLabels => [PriorityLabel, ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
+    private TextBlock[] ToolbarLabels => [PriorityLabel, WorkingOnLabel, ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
 
     /// <summary>
     /// Fits the toolbar and header to the width this view is offered (less with the discussion panel open): the toolbar
@@ -78,9 +78,17 @@ public partial class ProjectView : UserControl
             _offeredWidth = constraint.Width;
             var compact = _fullToolbarWidth > 0 && constraint.Width < _fullToolbarWidth + _toolbarChrome;
             var labels = compact ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var label in ToolbarLabels.Where(l => l.Visibility != labels)) label.Visibility = labels;
+            foreach (var label in ToolbarLabels.Where(l => l.Visibility != labels))
+            {
+                label.Visibility = labels;
+                // Re-measured up to the toolbar: a button whose margin changes below in this same pass otherwise keeps
+                // its content's old size (Show done stayed as wide as with its label).
+                for (DependencyObject? d = label; d != null && d != Toolbar; d = VisualTreeHelper.GetParent(d))
+                    (d as UIElement)?.InvalidateMeasure();
+            }
             // Compact also narrows the filters and gaps a little, so the buttons on the right fit next to the discussion panel.
-            TagFilterBox.Width = StateFilterBox.Width = compact ? 98 : 130;
+            TagFilterBox.Width = StateFilterBox.Width = compact ? 90 : 130;
+            TagFilterBox.Margin = StateFilterBox.Margin = PriorityButton.Margin = new Thickness(compact ? 4 : 8, 0, 0, 0);
             Toolbar.ColumnDefinitions[0].MinWidth = compact ? 100 : 140;
             PriorityChevron.Visibility = labels;
             ShowDoneToggle.Margin = new Thickness(compact ? 4 : 12, 0, 0, 0);
@@ -125,7 +133,7 @@ public partial class ProjectView : UserControl
     private static IEnumerable<MenuItem> PriorityItems(ItemRowViewModel row) =>
         ProjectViewModel.PriorityChoices.Select((p, i) => new MenuItem
         {
-            Header = p.ToString(), IsChecked = row.Priority == p, InputGestureText = $"Alt+{i + 1}",
+            Header = Core.Model.Priorities.Label(p), IsChecked = row.Priority == p, InputGestureText = $"Alt+{i + 1}",
             Command = row.SetPriorityCommand, CommandParameter = p,
         }).Append(new MenuItem { Header = "None", IsChecked = !row.HasPriority, InputGestureText = "Alt+0", Command = row.SetPriorityCommand, CommandParameter = Core.Model.Priority.None });
 
@@ -256,10 +264,10 @@ public partial class ProjectView : UserControl
             case Key.D0 or Key.NumPad0 when mods == ModifierKeys.Alt:
                 vm.SetPriority(row, Core.Model.Priority.None);
                 break;
-            case >= Key.D1 and <= Key.D4 when mods == ModifierKeys.Alt:
+            case >= Key.D1 and <= Key.D5 when mods == ModifierKeys.Alt:
                 vm.SetPriority(row, ProjectViewModel.PriorityChoices[key - Key.D1]);
                 break;
-            case >= Key.NumPad1 and <= Key.NumPad4 when mods == ModifierKeys.Alt:
+            case >= Key.NumPad1 and <= Key.NumPad5 when mods == ModifierKeys.Alt:
                 vm.SetPriority(row, ProjectViewModel.PriorityChoices[key - Key.NumPad1]);
                 break;
             case Key.V when mods == ModifierKeys.Control && ClipboardAttachments.HasAttachment():
@@ -455,14 +463,26 @@ public partial class ProjectView : UserControl
     private void CategoryMore_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CategoryViewModel category } button) return;
-        // The menu would take the icon font from the "…" button and show its text as boxes.
-        var menu = new ContextMenu { PlacementTarget = button, FontFamily = FontFamily };
-        menu.Items.Add(new MenuItem { Header = "Move up", Command = category.MoveUpCommand });
-        menu.Items.Add(new MenuItem { Header = "Move down", Command = category.MoveDownCommand });
+        var menu = BuildCategoryMenu(category);
+        menu.PlacementTarget = button;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>The category's "…" menu. Its own font is set: it would take the icon font from the "…" button and show its text as boxes.</summary>
+    internal ContextMenu BuildCategoryMenu(CategoryViewModel category)
+    {
+        var menu = new ContextMenu { FontFamily = FontFamily };
+        var categories = category.Owner.Project.Categories;
+        var first = categories.FirstOrDefault() == category.Model;
+        var last = categories.LastOrDefault() == category.Model;
+        menu.Items.Add(new MenuItem { Header = "Move to top", Command = category.MoveToTopCommand, IsEnabled = !first });
+        menu.Items.Add(new MenuItem { Header = "Move up", Command = category.MoveUpCommand, IsEnabled = !first });
+        menu.Items.Add(new MenuItem { Header = "Move down", Command = category.MoveDownCommand, IsEnabled = !last });
+        menu.Items.Add(new MenuItem { Header = "Move to bottom", Command = category.MoveToBottomCommand, IsEnabled = !last });
         menu.Items.Add(new MenuItem { Header = category.IsDoneExpanded ? "Hide done" : "Show done", Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => category.IsDoneExpanded = !category.IsDoneExpanded) });
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Delete category…", Command = category.DeleteCommand });
-        menu.IsOpen = true;
+        return menu;
     }
 
     // ───────────── Drag & drop ─────────────

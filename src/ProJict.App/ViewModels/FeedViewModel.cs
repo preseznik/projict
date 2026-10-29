@@ -43,7 +43,7 @@ public sealed partial class FeedViewModel : ObservableObject
         new("Added & finished", [FeedKind.Added, FeedKind.Done]),
         new("Comments", [FeedKind.Comment]),
         new("History (check-outs, reviews…)", [FeedKind.History]),
-        new("Releases & notes", [FeedKind.Release, FeedKind.Note]),
+        new("Releases, shipping & notes", [FeedKind.Release, FeedKind.Ship, FeedKind.Note]),
         new("Projects", [FeedKind.Project]),
     ];
 
@@ -169,6 +169,7 @@ public sealed partial class FeedViewModel : ObservableObject
             project.SelectedRelease = project.Releases.FirstOrDefault(r => r.Id == e.Release.Id);
         }
         if (e.Note != null) project.RevealNote(e.Note);
+        if (e.Ship != null) project.RevealShip(e.Ship);
     }
 
     public void OpenProject(FeedEvent e)
@@ -202,6 +203,7 @@ public sealed partial class FeedRowViewModel(FeedEvent e, string? dayHeader, Fee
         FeedKind.Comment => "",
         FeedKind.Release => "",
         FeedKind.Note => "",
+        FeedKind.Ship => "",
         FeedKind.Project => "",
         _ => Event.Agent ? "" : "",
     };

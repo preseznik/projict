@@ -124,7 +124,7 @@ public sealed class GroupCommentCountConverter : IMultiValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>A priority's colour: red for urgent, amber for high, the accent for medium, grey for low.</summary>
+/// <summary>A priority's colour: red for urgent, amber for high, the accent for medium, grey for low, pale grey for on hold.</summary>
 public sealed class PriorityToBrushConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -134,6 +134,7 @@ public sealed class PriorityToBrushConverter : IValueConverter
             Priority.Urgent => "SystemFillColorCriticalBrush",
             Priority.High => "SystemFillColorCautionBrush",
             Priority.Medium => "AccentFillColorDefaultBrush",
+            Priority.Hold => "TextFillColorTertiaryBrush",
             _ => "SystemFillColorNeutralBrush",
         };
         return Application.Current.TryFindResource(key) as Brush ?? Brushes.Gray;

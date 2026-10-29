@@ -37,7 +37,7 @@ public static class GuestAccess
 
     /// <summary>Only the host changes these; a guest's values are replaced by the host's.</summary>
     private static readonly string[] HostFields =
-        ["id", "name", "key", "filePrefix", "group", "status", "isInbox", "repoPath", "gitHubUrl", "issues", "gitHubRelease", "archivedFiles", "createdAt", "updatedAt"];
+        ["id", "name", "key", "filePrefix", "group", "status", "isInbox", "repoPath", "gitHubUrl", "issues", "gitHubRelease", "archivedFiles", "shipping", "ships", "createdAt", "updatedAt"];
 
     /// <summary>
     /// The guest's version of the project as the host will store it, or the reason it is refused. Comments, history

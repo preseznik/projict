@@ -93,8 +93,8 @@
         <CheckBox x:Name="UseGitHubCli" Content="Use my GitHub CLI (gh) sign-in, so private repositories are included" Margin="0,8,0,0" />
         <TextBlock x:Name="ReleasesResult" Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="2,6,0,0" />
 
-        <TextBlock Text="AI agents &amp; comments" Style="{StaticResource SectionTitle}" />
-        <Grid Margin="0,0,0,8">
+        <TextBlock Text="Comments &amp; history" Style="{StaticResource SectionTitle}" />
+        <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="*" />
@@ -103,9 +103,31 @@
             <TextBox x:Name="UserName" Grid.Column="1" Width="220" HorizontalAlignment="Left"
                      ToolTip="How you sign comments, notes and history entries. Empty uses your Windows user name." />
         </Grid>
+
+        <TextBlock Text="AI agents" Style="{StaticResource SectionTitle}" />
         <CheckBox x:Name="AllowAgents" Content="Let AI agents (Claude Code and other MCP clients) work in ProJict" />
         <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
                    Text="Agents can check out and complete items, add items, comment, attach files and write notes, but never delete anything; what they finish waits for your review, and Ctrl+Z undoes their changes." />
+        <!-- Which items agents may work on, by priority; the check boxes' Tag is the Priority. -->
+        <StackPanel IsEnabled="{Binding IsChecked, ElementName=AllowAgents}" Margin="0,10,0,0">
+            <TextBlock Text="Agents may work on items that are" />
+            <WrapPanel x:Name="AgentPriorities" Margin="0,4,0,0" AutomationProperties.Name="Agents may work on">
+                <WrapPanel.Resources>
+                    <!-- One row: the theme's check boxes are at least 120 wide. -->
+                    <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                        <Setter Property="MinWidth" Value="0" />
+                        <Setter Property="Margin" Value="0,0,22,0" />
+                    </Style>
+                </WrapPanel.Resources>
+                <CheckBox Content="Urgent" Tag="Urgent" />
+                <CheckBox Content="High" Tag="High" />
+                <CheckBox Content="Medium" Tag="Medium" />
+                <CheckBox Content="Low" Tag="Low" />
+                <CheckBox Content="Without a priority" Tag="None" />
+            </WrapPanel>
+            <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
+                       Text="Items on hold (Alt+5) are always left alone. Agents can still read and comment on the others, but can't check them out, change, attach to or complete them. A sub-item without a priority goes by the item it belongs to." />
+        </StackPanel>
         <!-- How to add ProJict to each agent; folded away once it's set up. -->
         <Expander x:Name="ConnectAgent" Header="Connect an AI agent (Claude Code, Codex, OpenCode, …)" Margin="0,8,0,0">
             <StackPanel Margin="0,8,0,0">

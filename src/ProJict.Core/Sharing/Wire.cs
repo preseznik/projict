@@ -9,7 +9,8 @@ namespace ProJict.Core.Sharing;
 /// </summary>
 public sealed class Wire(Stream stream)
 {
-    public const int Version = 1;
+    /// <summary>2: items can be on hold (a 0.1.13 app couldn't read that priority).</summary>
+    public const int Version = 2;
     public const int MaxLine = 24 * 1024 * 1024;
     private readonly byte[] _buffer = new byte[64 * 1024];
     private readonly SemaphoreSlim _writeLock = new(1, 1);

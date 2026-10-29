@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.14 (2026-10-29)
+
+- **Ship** button in a project's header (or right-click › Ship…): ask an AI agent to commit, build, package, push and/or release the project. The agent posts its plan on the board (version, what's in it, items still waiting for your review, what it will run) and runs nothing until you **Approve** it; then it reports each step under the plan. Push and release always need your approval; commit, build and package can run without asking if you allow that. Requests show in the sidebar, on the dashboard and in the Feed.
+- **Details → Shipping**: the steps a project has and how it's shipped, written once for the agent to follow.
+- **Settings › AI agents** chooses which items AI agents may work on, by priority. By default that's every item with a priority (urgent, high, medium or low), not items without one. Agents still see the other items and can comment on them, for example to ask you, but can't check them out, change or complete them; a sub-item without a priority of its own goes by the item it belongs to.
+- New priority **On hold** (Alt+5, or from an item's priority menu) for items you want left alone for now: AI agents never work on them, they sort last, and the Priority button can show just them.
+- Comments in discussions can be selected and copied: drag over any part and press Ctrl+C (or right-click › Copy), or copy a whole comment with the copy button that appears when you point at it.
+- **Working on** button above the board: shows only the items someone is on, checked out by an AI agent or marked in progress.
+- A category's "…" menu has **Move to top** and **Move to bottom** next to Move up and Move down (the ones that can't apply are greyed out).
+- Your name for comments and history moved to its own section in Settings, **Comments & history**.
+- Sharing between ProJict apps needs both on this version (on hold is new to them).
+
 ## 0.1.13 (2026-10-29)
 
 - **Sharing**: other people on your network can work in your projects live from their own ProJict. Turn it on under **Sharing** (the new button below the sidebar), create an invite with a role and the groups they'll see, and give them the code. They connect with your address and the code, and you let them in, deny or block them from a bar that appears. Their changes show on your board as they make them, and yours on theirs; when two people change different things at once, both changes are kept.

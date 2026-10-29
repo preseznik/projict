@@ -123,6 +123,20 @@ public sealed partial class DiscussionViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>A whole comment to the clipboard (parts of one are selected and copied in the panel itself).</summary>
+    public void Copy(string text)
+    {
+        try
+        {
+            Clipboard.SetText(text);
+            _state.StatusText = "Comment copied.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            _state.StatusText = "Clipboard is busy, try again.";
+        }
+    }
+
     public void Remove(CommentViewModel comment)
     {
         if (Target.Kind == DiscussionKind.Group)
@@ -193,6 +207,8 @@ public sealed partial class CommentViewModel : ObservableObject
     }
 
     [RelayCommand] private void Delete() => _owner.Remove(this);
+
+    [RelayCommand] private void Copy() => _owner.Copy(Model.Text);
 
     private void Update(Comment model)
     {
