@@ -34,6 +34,8 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 | Ctrl+Space | select items for **Copy prompt** |
 | Ctrl+V | with a screenshot or files copied: attach them to the item |
 
+Right-click an item, or click the **⋯** that appears on its right when you point at it, for everything else you can do with it: priority, tag, discussion, attachments, moving it and more.
+
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
 Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done.

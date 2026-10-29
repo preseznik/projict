@@ -284,11 +284,56 @@ public partial class ProjectView : UserControl
         e.Handled = true;
     }
 
+    // ───────────── Item menu ─────────────
+    // Right-click on the text (whose built-in Cut/Copy/Paste menu is switched off in XAML), right-click anywhere else on
+    // the row, or its ⋯ button.
+
+    /// <summary>
+    /// A text box shows its own Cut/Copy/Paste menu on right-click before any handler of ours runs, unless its
+    /// ContextMenu is explicitly null on the box itself; a value from the row template doesn't count, so it's set here.
+    /// </summary>
+    private void RowText_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox box && box.ReadLocalValue(ContextMenuProperty) != null) box.ContextMenu = null;
+    }
+
     private void RowText_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         if (sender is not TextBox box || box.DataContext is not ItemRowViewModel row) return;
         e.Handled = true;
-        var menu = new ContextMenu { PlacementTarget = box };
+        // From the keyboard (Menu key, Shift+F10) the menu opens under the item rather than at the mouse.
+        OpenItemMenu(row, box, box, e.CursorLeft < 0 ? System.Windows.Controls.Primitives.PlacementMode.Bottom
+            : System.Windows.Controls.Primitives.PlacementMode.MousePoint);
+    }
+
+    private void Row_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ItemRowViewModel row } element) return;
+        e.Handled = true;
+        OpenItemMenu(row, element, FindRowTextBox(row.Item.Id), System.Windows.Controls.Primitives.PlacementMode.MousePoint);
+    }
+
+    private void RowMore_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ItemRowViewModel row } button) return;
+        OpenItemMenu(row, button, FindRowTextBox(row.Item.Id), System.Windows.Controls.Primitives.PlacementMode.Bottom);
+    }
+
+    private void OpenItemMenu(ItemRowViewModel row, UIElement target, TextBox? box, System.Windows.Controls.Primitives.PlacementMode placement)
+    {
+        var menu = BuildItemMenu(row, box);
+        menu.PlacementTarget = target;
+        menu.Placement = placement;
+        menu.IsOpen = true;
+    }
+
+    /// <summary>
+    /// Everything you can do with an item. Cut/Copy/Paste act on its text box when given. Its own font is set, so it
+    /// doesn't pick up the icon font of the ⋯ button.
+    /// </summary>
+    internal ContextMenu BuildItemMenu(ItemRowViewModel row, TextBox? box)
+    {
+        var menu = new ContextMenu { FontFamily = FontFamily };
 
         MenuItem Item(string header, ICommand command, object? parameter = null, string? gesture = null) =>
             new() { Header = header, Command = command, CommandParameter = parameter, InputGestureText = gesture ?? "" };
@@ -332,12 +377,15 @@ public partial class ProjectView : UserControl
         menu.Items.Add(new MenuItem { Header = "Select for prompt", Command = row.ToggleSelectedCommand, IsChecked = row.IsSelected, InputGestureText = "Ctrl+Space" });
         menu.Items.Add(Item("Promote to project…", row.PromoteCommand));
         menu.Items.Add(new Separator());
-        menu.Items.Add(new MenuItem { Header = "Cut", Command = ApplicationCommands.Cut, CommandTarget = box });
-        menu.Items.Add(new MenuItem { Header = "Copy", Command = ApplicationCommands.Copy, CommandTarget = box });
-        menu.Items.Add(new MenuItem { Header = "Paste", Command = ApplicationCommands.Paste, CommandTarget = box });
-        menu.Items.Add(new Separator());
+        if (box != null)
+        {
+            menu.Items.Add(new MenuItem { Header = "Cut", Command = ApplicationCommands.Cut, CommandTarget = box, InputGestureText = "Ctrl+X" });
+            menu.Items.Add(new MenuItem { Header = "Copy", Command = ApplicationCommands.Copy, CommandTarget = box, InputGestureText = "Ctrl+C" });
+            menu.Items.Add(new MenuItem { Header = "Paste", Command = ApplicationCommands.Paste, CommandTarget = box, InputGestureText = "Ctrl+V" });
+            menu.Items.Add(new Separator());
+        }
         menu.Items.Add(Item("Delete", row.DeleteCommand, gesture: "Ctrl+Shift+Del"));
-        menu.IsOpen = true;
+        return menu;
     }
 
     /// <summary>Right-click on a row's checkbox: the two states the item isn't in.</summary>

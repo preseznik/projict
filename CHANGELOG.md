@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.11 (2026-10-29)
+
+- Fixed: right-clicking an item's text showed only Cut / Copy / Paste instead of the item's menu (priority, tag, discussion and more). Right-click anywhere on an item now opens its menu, which still has Cut / Copy / Paste.
+- A ⋯ button appears on the right of an item when you point at it, for the same menu.
+
 ## 0.1.10 (2026-10-29)
 
 - Priorities: urgent, high, medium or low. Set one from an item's right-click menu, its priority chip, or with Alt+1 to Alt+4 (Alt+0 removes it).

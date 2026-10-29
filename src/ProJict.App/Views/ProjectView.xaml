@@ -40,6 +40,7 @@
             <Border x:Name="RowRoot" CornerRadius="4" Padding="0,1" Background="Transparent" BorderThickness="2,0,0,0" BorderBrush="Transparent"
                     AllowDrop="True" DragOver="Row_DragOver" PreviewDragLeave="Row_DragLeave" Drop="Row_Drop"
                     PreviewDragEnter="Row_PreviewFileDragOver" PreviewDragOver="Row_PreviewFileDragOver" PreviewDrop="Row_PreviewFileDrop"
+                    ContextMenuOpening="Row_ContextMenuOpening"
                     Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
                 <Grid Margin="{Binding IndentMargin}">
                     <Grid.RowDefinitions>
@@ -79,7 +80,7 @@
                         </Border>
                     </StackPanel>
                     <TextBox x:Name="RowText" Grid.Column="3" Uid="RowText" Style="{StaticResource RowTextBox}"
-                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+                             Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Loaded="RowText_Loaded"
                              PreviewKeyDown="RowText_PreviewKeyDown" GotKeyboardFocus="RowText_GotFocus" LostKeyboardFocus="RowText_LostFocus"
                              ContextMenuOpening="RowText_ContextMenuOpening" />
                     <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,5,4,0">
@@ -101,6 +102,10 @@
                             <TextBlock Text="{Binding ReleaseText}" Style="{StaticResource ChipText}" />
                         </Border>
                         <TextBlock Text="{Binding DoneAtText}" Style="{StaticResource MutedText}" FontSize="11" />
+                        <!-- Shows on hover: the item menu (priority, tag, discussion, …) for those who don't right-click. -->
+                        <Button x:Name="RowMore" Style="{StaticResource SubtleIconButton}" Content="&#xE712;" FontSize="12" Padding="5,1" Margin="4,-3,0,0"
+                                Opacity="0" Click="RowMore_Click" ToolTip="Priority, tag, discussion and more (or right-click the item)"
+                                AutomationProperties.Name="More" />
                     </StackPanel>
                     <StackPanel Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" Margin="4,0,0,0">
                         <!-- Who worked on it (a click filters the board by them), its discussion, and the newest history entry. -->
@@ -147,6 +152,7 @@
             <DataTemplate.Triggers>
                 <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
                     <Setter TargetName="Grip" Property="Opacity" Value="0.55" />
+                    <Setter TargetName="RowMore" Property="Opacity" Value="1" />
                 </Trigger>
                 <DataTrigger Binding="{Binding InDoneSection}" Value="True">
                     <Setter TargetName="RowText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -429,7 +435,7 @@
                     </DockPanel>
 
                     <TextBlock Grid.Row="2" Style="{StaticResource MutedText}" FontSize="11" Margin="6,6,0,0" TextWrapping="Wrap"
-                               Text="Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
+                               Text="Right-click an item (or its ⋯) for priority, tag, discussion and more · Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+1…4 priority · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
                 </Grid>
             </TabItem>
 
