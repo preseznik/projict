@@ -66,7 +66,7 @@ public sealed partial class ItemRowViewModel : ObservableObject
 
     private IReadOnlyList<AttachmentViewModel>? _attachments;
     public IReadOnlyList<AttachmentViewModel> Attachments => _attachments ??=
-        (Item.Attachments ?? []).Select(a => new AttachmentViewModel(Owner, a, () => Owner.RemoveAttachment(this, a))).ToList();
+        (Item.Attachments ?? []).Select(a => new AttachmentViewModel(Owner, a, () => Owner.RemoveAttachment(this, a), copy => Owner.AttachToItem(Item.Id, copy))).ToList();
     public bool HasAttachments => Item.HasAttachments;
 
     /// <summary>The agent working on the item, shown as a chip while it is in progress.</summary>

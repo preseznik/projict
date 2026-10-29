@@ -20,6 +20,9 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
     public string InProgressText => $"{Stats.InProgress} in progress";
     public bool HasBugs => Stats.OpenBugs > 0;
     public string BugsText => Stats.OpenBugs == 1 ? "1 bug" : $"{Stats.OpenBugs} bugs";
+    public IReadOnlyList<WorkerBadge> Workers => WorkerBadge.For(main.Agents.AgentsIn(Project.Id));
+    public bool HasWorkers => main.Agents.AgentsIn(Project.Id).Count > 0;
+    public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
     public bool HasReview => Stats.ToReview > 0;
     public string ReviewText => $"{Stats.ToReview} to review";
     public bool IsStale => Project.Status is ProjectStatus.Active && Stats.IsStale(staleDays, DateTime.Now);

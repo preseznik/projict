@@ -20,6 +20,11 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     public int GroupOrder => ProjectGroups.Order(Project, main.State.Settings);
     public int OpenCount => Project.Categories.Sum(c => c.Items.Count(i => !i.IsDone));
 
+    /// <summary>Badges for the AI agents working in the project right now, shown instead of the status dot.</summary>
+    public IReadOnlyList<WorkerBadge> Workers => WorkerBadge.For(main.Agents.AgentsIn(Project.Id));
+    public bool HasWorkers => main.Agents.AgentsIn(Project.Id).Count > 0;
+    public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
+
     /// <summary>Projects offered under "Copy categories from" in the right-click menu.</summary>
     public List<TemplateSourceViewModel> TemplateSources => main.TemplateSourcesFor(Project);
 
@@ -69,6 +74,12 @@ public sealed partial class MainViewModel : ObservableObject
         Updates = new Services.UpdateService(state);
         GitHub = new Services.GitHubService(state);
         Dashboard = new DashboardViewModel(state, this);
+        Feed = new FeedViewModel(state, this);
+        Agents.Changed += () =>
+        {
+            foreach (var item in ProjectItems) item.Refresh();
+            if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+        };
         GitHub.Updated += () =>
         {
             foreach (var vm in _projectViewModels.Values) vm.RefreshGitHubLink();
@@ -100,14 +111,16 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (p.IsInbox) OnPropertyChanged(nameof(InboxCount));
             ProjectItems.FirstOrDefault(i => i.Project == p)?.Refresh();
-            // While the dashboard shows, changes come from elsewhere (an AI agent, quick capture); keep it current.
+            // While the dashboard or the feed shows, changes come from elsewhere (an AI agent, quick capture); keep it current.
             if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+            if (CurrentView is FeedViewModel) Feed.Refresh();
             if (Discussion is { } open && open.Target.ProjectId == p.Id) open.Sync();
         };
         state.GroupCommentsChanged += group =>
         {
             OnPropertyChanged(nameof(GroupCommentCounts));
             if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+            if (CurrentView is FeedViewModel) Feed.Refresh();
             if (Discussion is { Target.Kind: DiscussionKind.Group } open && string.Equals(open.Target.Group, group, StringComparison.OrdinalIgnoreCase))
                 open.Sync();
         };
@@ -121,6 +134,9 @@ public sealed partial class MainViewModel : ObservableObject
     public Services.UpdateService Updates { get; }
     public Services.GitHubService GitHub { get; }
     public DashboardViewModel Dashboard { get; }
+    public FeedViewModel Feed { get; }
+    /// <summary>Which AI agents are connected and where they work.</summary>
+    public Services.AgentPresence Agents { get; } = new();
     public ObservableCollection<ProjectListItemViewModel> ProjectItems { get; } = [];
     public ICollectionView ProjectsView { get; }
     public ProjectFilterViewModel SidebarFilter { get; }
@@ -134,6 +150,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private object? _currentView;
     [ObservableProperty] private ProjectListItemViewModel? _selectedProjectItem;
     [ObservableProperty] private bool _isDashboardActive;
+    [ObservableProperty] private bool _isFeedActive;
     [ObservableProperty] private bool _isInboxActive;
 
     public ProjectViewModel? CurrentProject => CurrentView as ProjectViewModel;
@@ -238,6 +255,7 @@ public sealed partial class MainViewModel : ObservableObject
         var vm = GetProjectViewModel(project);
         CurrentView = vm;
         IsDashboardActive = false;
+        IsFeedActive = false;
         IsInboxActive = project.IsInbox;
         _syncingSelection = true;
         SelectedProjectItem = ProjectItems.FirstOrDefault(i => i.Project == project);
@@ -252,6 +270,21 @@ public sealed partial class MainViewModel : ObservableObject
         Dashboard.Refresh();
         CurrentView = Dashboard;
         IsDashboardActive = true;
+        IsFeedActive = false;
+        IsInboxActive = false;
+        _syncingSelection = true;
+        SelectedProjectItem = null;
+        _syncingSelection = false;
+        State.AppSettings.LastProjectId = null;
+    }
+
+    [RelayCommand]
+    public void ShowFeed()
+    {
+        Feed.Refresh();
+        CurrentView = Feed;
+        IsFeedActive = true;
+        IsDashboardActive = false;
         IsInboxActive = false;
         _syncingSelection = true;
         SelectedProjectItem = null;

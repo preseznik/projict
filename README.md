@@ -8,7 +8,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 
 - Windows 10 or 11 (64-bit).
 - Installs for your user account only, so it needs no administrator rights.
-- ProJict checks for a new version every time it starts and can install it for you, from the bar that appears or from **Settings → Updates**.
+- ProJict checks for a new version every time it starts, and every 4 hours while it's open. It can install it for you, from the bar that appears or from **Settings → Updates**.
 
 ## Getting started
 
@@ -61,7 +61,7 @@ HUD
 
 AI coding agents such as Claude Code can work in ProJict through the Model Context Protocol (MCP). An agent finds the project for the folder it works in, checks out an item, and completes it with a short resolution and screenshots. Agents and you can talk it over in the item's discussion.
 
-**Set up:** copy the command from **Settings → AI agents & comments** and run it once in a terminal. It looks like this:
+**Set up:** open **Settings → AI agents & comments → Connect an AI agent**, pick your agent (Claude Code, OpenAI Codex, OpenCode, or Claude Desktop and other MCP clients) and copy its setup. For Claude Code it's one command to run in a terminal, like this:
 
 ```
 claude mcp add --scope user projict -- "C:\Users\<you>\AppData\Local\Programs\ProJict\ProJict.exe" --mcp
@@ -73,6 +73,7 @@ Other MCP clients run the same program with `--mcp`. If ProJict isn't running, i
 - **Check-out:** while an agent has an item checked out (its name shows on the item), other agents can't change it, only comment on it. Taking it over is possible but is written to the item's history. If an agent stops halfway, right-click the item › **Release check-out**. You can always edit any item yourself.
 - **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → AI agents & comments**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
 - **Review:** an item an agent completes gets a **review** chip. Check the work, then click the chip to accept it, or mark the item to do to send it back. The dashboard lists everything waiting for review and what agents did recently, and **All states → Needs review** filters the board.
+- **Who's working where:** while an agent is connected, a badge with its initials shows next to each project it works in, in the sidebar and on the dashboard.
 - **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
 - Turn agent access off under **Settings → AI agents & comments**. Only programs running under your Windows account can connect; nothing is opened to the network.
 
@@ -87,8 +88,9 @@ Items, categories and groups each have a discussion with threaded replies, for y
 - **Releases on GitHub**: enter your GitHub account under **Settings → GitHub** (tick the GitHub CLI option to include private repositories). ProJict links projects to repositories with the same name, shows each one's latest release on its dashboard card, and the dashboard's **Released** filter lists them. A project's own GitHub link (Details) always wins.
 - **Reusing a project's layout**: right-click a project and choose **Copy categories from** to add another project's categories (without its items).
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
+- **Feed**: everything that happened across your projects, newest first: items added and finished, what AI agents did, comments, releases and notes. Filter by project, kind, person or agent and period, or search. Click an entry to go to it.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.
-- **Attachments**: drag files onto an item, paste a screenshot or copied files with Ctrl+V while editing it, or right-click it › **Attach files…**. Images show as thumbnails under the item. Click an attachment to open it; right-click it to show it in its folder, copy its path or remove it.
+- **Attachments**: drag files onto an item, paste a screenshot or copied files with Ctrl+V while editing it, or right-click it › **Attach files…**. To start a new item with a screenshot, paste it into the **Add item** box. Images show as thumbnails under the item. Click a picture to open it in ProJict's viewer, where you can mark it up (pen, highlighter, arrows, boxes, circles) and **Save copy** next to the original. Other files open in their usual app. Right-click an attachment to show it in its folder, copy its path or remove it.
 - **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link, your own standing instructions (set in **Details**) and the paths of attached files.
 - **Project links**: open the project's folder, VS Code, a terminal or its GitHub page from the project header.
 - **Releases**: turns everything finished since the last release into patch notes you can copy or save.

@@ -30,19 +30,74 @@ public partial class SettingsWindow : Window
         CheckUpdates.IsChecked = state.AppSettings.CheckForUpdates;
         AllowAgents.IsChecked = state.AppSettings.AllowAgents;
         UserName.Text = state.UserName;
-        McpCommand.Text = McpRegistrationCommand(state);
+        AgentClient.ItemsSource = AgentSetups(state);
+        AgentClient.SelectedIndex = 0;
         GitHubAccount.Text = s.GitHubAccount ?? "";
         UseGitHubCli.IsChecked = state.AppSettings.UseGitHubCliSignIn;
         VersionText.Text = $"ProJict {UpdateService.CurrentVersionText}";
         UpdatePanel.DataContext = App.Current.MainVm.Updates;
     }
 
-    /// <summary>The Claude Code command that registers this ProJict (and its data folder, when it isn't the remembered one).</summary>
-    public static string McpRegistrationCommand(AppState state)
+    /// <summary>How to add ProJict to one AI agent: what to run or paste, and where.</summary>
+    public sealed record AgentSetup(string Client, string Text, string Where);
+
+    /// <summary>
+    /// Setup for each supported agent, all starting "ProJict.exe --mcp" (plus this data folder when it isn't the
+    /// remembered one). Formats: Claude Code and Codex CLI commands, Codex's config.toml, OpenCode's opencode.json and
+    /// the mcpServers JSON most other clients use.
+    /// </summary>
+    public static IReadOnlyList<AgentSetup> AgentSetups(AppState state)
     {
-        var data = string.Equals(state.AppSettings.DataRoot is { } remembered ? Path.GetFullPath(remembered) : null, state.Store.DataRoot,
-            StringComparison.OrdinalIgnoreCase) ? "" : $" --data \"{state.Store.DataRoot}\"";
-        return $"claude mcp add --scope user projict -- \"{Environment.ProcessPath}\" --mcp{data}";
+        var exe = Environment.ProcessPath!;
+        var remembered = state.AppSettings.DataRoot is { } r ? Path.GetFullPath(r) : null;
+        string[] args = string.Equals(remembered, state.Store.DataRoot, StringComparison.OrdinalIgnoreCase)
+            ? ["--mcp"] : ["--mcp", "--data", state.Store.DataRoot];
+        var cliArgs = string.Join(" ", args.Select(a => a.Contains(' ') || a.Contains('\\') ? $"\"{a}\"" : a));
+        // TOML literal strings ('…') take Windows paths as they are.
+        var tomlArgs = string.Join(", ", args.Select(a => $"'{a}'"));
+        var pretty = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+        var openCode = new System.Text.Json.Nodes.JsonObject
+        {
+            ["$schema"] = "https://opencode.ai/config.json",
+            ["mcp"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["projict"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["type"] = "local",
+                    ["command"] = new System.Text.Json.Nodes.JsonArray([exe, .. args.Select(a => (System.Text.Json.Nodes.JsonNode)a)]),
+                    ["enabled"] = true,
+                },
+            },
+        }.ToJsonString(pretty);
+        var mcpServers = new System.Text.Json.Nodes.JsonObject
+        {
+            ["mcpServers"] = new System.Text.Json.Nodes.JsonObject
+            {
+                ["projict"] = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["command"] = exe,
+                    ["args"] = new System.Text.Json.Nodes.JsonArray(args.Select(a => (System.Text.Json.Nodes.JsonNode)a).ToArray()),
+                },
+            },
+        }.ToJsonString(pretty);
+        return
+        [
+            new("Claude Code", $"claude mcp add --scope user projict -- \"{exe}\" {cliArgs}", "Run this once in a terminal."),
+            new("OpenAI Codex", $"codex mcp add projict -- \"{exe}\" {cliArgs}\n\n# or add to ~/.codex/config.toml:\n[mcp_servers.projict]\ncommand = '{exe}'\nargs = [{tomlArgs}]",
+                "Run the command once in a terminal, or add the table to ~/.codex/config.toml (the CLI and the IDE extension share it)."),
+            new("OpenCode", openCode, "Merge into ~/.config/opencode/opencode.json (for all projects) or opencode.json in a project folder."),
+            new("Claude Desktop & other MCP clients", mcpServers, "Merge into the client's MCP settings, e.g. claude_desktop_config.json for Claude Desktop."),
+        ];
+    }
+
+    /// <summary>The Claude Code command (kept for checks that look for it).</summary>
+    public static string McpRegistrationCommand(AppState state) => AgentSetups(state)[0].Text;
+
+    private void AgentClient_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (AgentClient.SelectedItem is not AgentSetup setup) return;
+        McpCommand.Text = setup.Text;
+        McpWhere.Text = setup.Where;
     }
 
     private void CopyMcpCommand_Click(object sender, RoutedEventArgs e)
@@ -50,7 +105,7 @@ public partial class SettingsWindow : Window
         try
         {
             Clipboard.SetText(McpCommand.Text);
-            _state.StatusText = "Copied the command that adds ProJict to Claude Code.";
+            _state.StatusText = $"Copied the setup for {(AgentClient.SelectedItem as AgentSetup)?.Client ?? "the agent"}.";
         }
         catch (System.Runtime.InteropServices.ExternalException)
         {

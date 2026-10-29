@@ -23,6 +23,27 @@ public sealed partial class UpdateService(AppState state) : ObservableObject
     [ObservableProperty] private bool _isDownloading;
     [ObservableProperty] private double _progress;
 
+    /// <summary>How often ProJict looks again while it stays open (it also looks at every start).</summary>
+    public static readonly TimeSpan PeriodicInterval = TimeSpan.FromHours(4);
+    private System.Windows.Threading.DispatcherTimer? _timer;
+
+    /// <summary>
+    /// Keeps looking while ProJict runs, so a long-open ProJict learns of new versions too. A tick does nothing while
+    /// checks are turned off, the banner already shows or an update is downloading; "Later" means until the next look.
+    /// </summary>
+    public void StartPeriodicChecks()
+    {
+        if (_timer != null) return;
+        _timer = new System.Windows.Threading.DispatcherTimer { Interval = PeriodicInterval };
+        _timer.Tick += async (_, _) =>
+        {
+            if (state.AppSettings.CheckForUpdates && !IsAvailable && !IsDownloading) await CheckAsync(manual: false);
+        };
+        _timer.Start();
+    }
+
+    public bool IsPeriodicCheckRunning => _timer?.IsEnabled == true;
+
     public bool IsAvailable => Available != null;
     public string BannerText => Available == null ? ""
         : $"ProJict {Available.Version.ToString(3)} is available (you have {CurrentVersionText}).";

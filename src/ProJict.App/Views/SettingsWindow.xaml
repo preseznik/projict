@@ -104,15 +104,24 @@
                      ToolTip="How you sign comments, notes and history entries. Empty uses your Windows user name." />
         </Grid>
         <CheckBox x:Name="AllowAgents" Content="Let AI agents (Claude Code and other MCP clients) work in ProJict" />
-        <DockPanel Margin="0,8,0,0">
-            <Button DockPanel.Dock="Right" Content="Copy" MinWidth="70" Margin="8,0,0,0" Click="CopyMcpCommand_Click" />
-            <TextBox x:Name="McpCommand" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12" />
-        </DockPanel>
         <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
-                   Text="Run this once in a terminal to add ProJict to Claude Code. Agents can claim and complete items, add items, attach files and write notes, but never delete anything; what they finish waits for your review, and Ctrl+Z undoes their changes." />
+                   Text="Agents can check out and complete items, add items, comment, attach files and write notes, but never delete anything; what they finish waits for your review, and Ctrl+Z undoes their changes." />
+        <!-- How to add ProJict to each agent; folded away once it's set up. -->
+        <Expander x:Name="ConnectAgent" Header="Connect an AI agent (Claude Code, Codex, OpenCode, …)" Margin="0,8,0,0">
+            <StackPanel Margin="0,8,0,0">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Copy" MinWidth="70" Margin="8,0,0,0" Click="CopyMcpCommand_Click" />
+                    <ComboBox x:Name="AgentClient" Width="280" HorizontalAlignment="Left" DisplayMemberPath="Client"
+                              SelectionChanged="AgentClient_SelectionChanged" AutomationProperties.Name="AI agent" />
+                </DockPanel>
+                <TextBox x:Name="McpCommand" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" FontFamily="{StaticResource MonoFont}" FontSize="12"
+                         MaxHeight="170" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0" />
+                <TextBlock x:Name="McpWhere" Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap" />
+            </StackPanel>
+        </Expander>
 
         <TextBlock Text="Updates" Style="{StaticResource SectionTitle}" />
-        <CheckBox x:Name="CheckUpdates" Content="Check for updates when ProJict starts" />
+        <CheckBox x:Name="CheckUpdates" Content="Check for updates when ProJict starts, and every 4 hours while it's open" />
         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
             <Button x:Name="CheckNow" Content="Check now" MinWidth="100" Click="CheckNow_Click" />
             <TextBlock x:Name="UpdateResult" Style="{StaticResource MutedText}" FontSize="13" Margin="12,0,0,0" TextWrapping="Wrap" />

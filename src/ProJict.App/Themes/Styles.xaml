@@ -195,4 +195,15 @@
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
     </Style>
+
+    <!-- Who is working in a project: overlapping round badges with initials (see WorkerBadge). -->
+    <ItemsPanelTemplate x:Key="WorkerBadgePanel">
+        <StackPanel Orientation="Horizontal" Margin="4,0,0,0" />
+    </ItemsPanelTemplate>
+    <DataTemplate x:Key="WorkerBadgeTemplate">
+        <Border Width="16" Height="16" CornerRadius="8" Margin="-4,0,0,0" Background="{Binding Background}"
+                BorderBrush="{DynamicResource SolidBackgroundFillColorBaseBrush}" BorderThickness="1.5">
+            <TextBlock Text="{Binding Initials}" FontSize="7" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+    </DataTemplate>
 </ResourceDictionary>

@@ -96,6 +96,7 @@ public partial class App : Application
 
         if (appSettings.CheckForUpdates)
             _ = MainVm.Updates.CheckAsync(manual: false);
+        MainVm.Updates.StartPeriodicChecks();
         if (MainVm.GitHub.HasWork)
             _ = MainVm.GitHub.RefreshAsync(force: false);
     }

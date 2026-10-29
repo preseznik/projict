@@ -12,6 +12,9 @@
         <DataTemplate DataType="{x:Type vm:ProjectViewModel}">
             <views:ProjectView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:FeedViewModel}">
+            <views:FeedView />
+        </DataTemplate>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Gesture="Ctrl+K" Command="{Binding SearchCommand}" />
@@ -62,6 +65,13 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE80F;" Width="26" HorizontalAlignment="Left" TextAlignment="Left" />
                             <TextBlock Text="Dashboard" />
+                        </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Command="{Binding ShowFeedCommand}" Tag="{Binding IsFeedActive}"
+                            ToolTip="What happened across your projects: items added and finished, comments, AI agents' work">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE81C;" Width="26" HorizontalAlignment="Left" TextAlignment="Left" />
+                            <TextBlock Text="Feed" />
                         </StackPanel>
                     </Button>
                     <Button Style="{StaticResource NavButton}" Command="{Binding ShowInboxCommand}" Tag="{Binding IsInboxActive}">
@@ -180,11 +190,16 @@
                             <DataTemplate DataType="{x:Type vm:ProjectListItemViewModel}">
                                 <Grid Tag="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}" Background="Transparent">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="Auto" MinWidth="16" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <Ellipse Width="7" Height="7" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" HorizontalAlignment="Left" ToolTip="{Binding Status}" />
+                                    <Ellipse Width="7" Height="7" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" HorizontalAlignment="Left" ToolTip="{Binding Status}"
+                                             Visibility="{Binding HasWorkers, Converter={StaticResource InvBoolToVis}}" />
+                                    <!-- While AI agents work in the project, their badges take the status dot's place. -->
+                                    <ItemsControl ItemsSource="{Binding Workers}" ItemsPanel="{StaticResource WorkerBadgePanel}" ItemTemplate="{StaticResource WorkerBadgeTemplate}"
+                                                  Focusable="False" Margin="-2,0,6,0" VerticalAlignment="Center" ToolTip="{Binding WorkersToolTip}"
+                                                  Visibility="{Binding HasWorkers, Converter={StaticResource BoolToVis}}" />
                                     <TextBlock Grid.Column="1" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2" Text="{Binding OpenCount}" Style="{StaticResource MutedText}" Margin="6,0,0,0" />
                                     <Grid.ContextMenu>

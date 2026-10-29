@@ -102,7 +102,9 @@
                             <TextBlock Text="{Binding ReleaseText}" Style="{StaticResource ChipText}" />
                         </Border>
                         <TextBlock Text="{Binding DoneAtText}" Style="{StaticResource MutedText}" FontSize="11" />
-                        <!-- Shows on hover: the item menu (priority, tag, discussion, …) for those who don't right-click. -->
+                        <!-- Show on hover: the item's discussion, and its menu (priority, tag, …) for those who don't right-click. -->
+                        <Button x:Name="RowChat" Style="{StaticResource SubtleIconButton}" Content="&#xE8BD;" FontSize="12" Padding="5,1" Margin="4,-3,0,0"
+                                Opacity="0" Command="{Binding OpenDiscussionCommand}" ToolTip="Discussion" AutomationProperties.Name="Discussion" />
                         <Button x:Name="RowMore" Style="{StaticResource SubtleIconButton}" Content="&#xE712;" FontSize="12" Padding="5,1" Margin="4,-3,0,0"
                                 Opacity="0" Click="RowMore_Click" ToolTip="Priority, tag, discussion and more (or right-click the item)"
                                 AutomationProperties.Name="More" />
@@ -153,6 +155,7 @@
                 <Trigger SourceName="RowRoot" Property="IsMouseOver" Value="True">
                     <Setter TargetName="Grip" Property="Opacity" Value="0.55" />
                     <Setter TargetName="RowMore" Property="Opacity" Value="1" />
+                    <Setter TargetName="RowChat" Property="Opacity" Value="1" />
                 </Trigger>
                 <DataTrigger Binding="{Binding InDoneSection}" Value="True">
                     <Setter TargetName="RowText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -221,9 +224,12 @@
         </DataTemplate>
 
         <DataTemplate x:Key="AddItemTemplate" DataType="{x:Type vm:CategoryViewModel}">
+            <!-- Pasting (Ctrl+V) or dropping a screenshot or files here adds the item with them attached. -->
             <TextBox Uid="AddItem" Style="{StaticResource RowTextBox}" Margin="40,2,0,0"
-                     Tag="Add item…  (Enter · prefix BUG: / ADD: to tag)"
-                     Text="{Binding NewItemText, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus">
+                     Tag="Add item…  (Enter · prefix BUG: / ADD: to tag · paste or drop a screenshot to attach it)"
+                     Text="{Binding NewItemText, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus"
+                     PreviewKeyDown="AddItem_PreviewKeyDown" AllowDrop="True"
+                     PreviewDragEnter="AddItem_PreviewDragOver" PreviewDragOver="AddItem_PreviewDragOver" PreviewDrop="AddItem_PreviewDrop">
                 <TextBox.InputBindings>
                     <KeyBinding Key="Enter" Command="{Binding AddNewItemCommand}" />
                 </TextBox.InputBindings>
@@ -435,7 +441,7 @@
                     </DockPanel>
 
                     <TextBlock Grid.Row="2" Style="{StaticResource MutedText}" FontSize="11" Margin="6,6,0,0" TextWrapping="Wrap"
-                               Text="Right-click an item (or its ⋯) for priority, tag, discussion and more · Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+1…4 priority · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
+                               Text="Right-click an item, or point at it for its discussion and ⋯ buttons · Enter new item · Shift+Enter new line · Tab / Shift+Tab indent · Ctrl+Enter done · Ctrl+I in progress · Alt+1…4 priority · Alt+↑↓ move · Ctrl+Space select for prompt · Ctrl+Shift+Del delete · Ctrl+Z undo" />
                 </Grid>
             </TabItem>
 

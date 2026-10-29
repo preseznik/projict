@@ -129,12 +129,17 @@ public sealed class AgentTools : IMcpToolHost
     public void SessionStarted(McpSession session)
     {
         lock (_live) _live.Add(session);
-        _dispatcher.InvokeAsync(() => _state.StatusText = $"{session.AgentName} connected to ProJict.");
+        _dispatcher.InvokeAsync(() =>
+        {
+            _state.StatusText = $"{session.AgentName} connected to ProJict.";
+            _main.Agents.Connected(session, ProjectMatcher.ForFolder(_state.Projects, session.WorkingDirectory)?.Project);
+        });
     }
 
     public void SessionEnded(McpSession session)
     {
         lock (_live) _live.Remove(session);
+        if (!_dispatcher.HasShutdownStarted) _dispatcher.InvokeAsync(() => _main.Agents.Disconnected(session));
     }
 
     public async Task<string> CallAsync(McpSession session, string name, JsonElement arguments)
@@ -185,6 +190,7 @@ public sealed class AgentTools : IMcpToolHost
         session.Label = string.IsNullOrEmpty(label) ? null : label;
         // Items it has checked out move to its new name, so it keeps them.
         foreach (var (project, item) in held) Edit(project, item.Id, i => i.ClaimedBy = session.AgentName);
+        _main.Agents.Renamed();
         return Json(new JsonObject { ["name"] = session.AgentName });
     }
 
@@ -241,13 +247,13 @@ public sealed class AgentTools : IMcpToolHost
 
     private string GetItem(McpSession session, Args args, List<Attachment> files)
     {
-        var (project, loc) = FindItem(args.Required("id"));
+        var (project, loc) = FindItem(session, args.Required("id"));
         return Json(ItemDetails(project, loc));
     }
 
     private string ClaimItem(McpSession session, Args args, List<Attachment> files)
     {
-        var (project, loc) = FindItem(args.Required("id"));
+        var (project, loc) = FindItem(session, args.Required("id"));
         var item = loc.Item;
         if (item.IsDone) throw new McpToolException("This item is already done. Use update_item with state todo to reopen it first.");
         var takenFrom = CheckOut(session, item, args);
@@ -267,7 +273,7 @@ public sealed class AgentTools : IMcpToolHost
 
     private string CompleteItem(McpSession session, Args args, List<Attachment> files)
     {
-        var (project, loc) = FindItem(args.Required("id"));
+        var (project, loc) = FindItem(session, args.Required("id"));
         var resolution = args.Required("resolution").Trim();
         var takenFrom = CheckOut(session, loc.Item, args);
         var agent = session.AgentName;
@@ -295,7 +301,7 @@ public sealed class AgentTools : IMcpToolHost
         if (args.String("parent") is { } parentText)
         {
             // A sub-item goes into its parent's project.
-            var (parentProject, parentLoc) = FindItem(parentText);
+            var (parentProject, parentLoc) = FindItem(session, parentText);
             if (args.String("project") != null && ProjectFor(session, args) != parentProject) throw new McpToolException("The parent item is in another project.");
             CheckOut(session, parentLoc.Item, args);
             project = parentProject;
@@ -317,7 +323,7 @@ public sealed class AgentTools : IMcpToolHost
 
     private string UpdateItem(McpSession session, Args args, List<Attachment> files)
     {
-        var (project, loc) = FindItem(args.Required("id"));
+        var (project, loc) = FindItem(session, args.Required("id"));
         var text = args.String("text");
         var tag = args.String("tag");
         var comment = args.String("comment");
@@ -377,7 +383,7 @@ public sealed class AgentTools : IMcpToolHost
 
     private string AttachFile(McpSession session, Args args, List<Attachment> files)
     {
-        var (project, loc) = FindItem(args.Required("id"));
+        var (project, loc) = FindItem(session, args.Required("id"));
         if (files.Count == 0) throw new McpToolException("Give at least one file in paths.");
         var takenFrom = CheckOut(session, loc.Item, args);
         var agent = session.AgentName;
@@ -433,7 +439,7 @@ public sealed class AgentTools : IMcpToolHost
         if (given > 1) throw new McpToolException("Give only one of item, category or group.");
         if (args.String("item") is { } id)
         {
-            var (project, loc) = FindItem(id);
+            var (project, loc) = FindItem(session, id);
             return new CommentTarget($"item {ShortId(loc.Item.Id)} “{Short(loc.Item.Text)}” ({project.Name})", project, loc.Item.Id, null, loc.Item.Comments);
         }
         if (args.String("category") is { } name)
@@ -592,7 +598,15 @@ public sealed class AgentTools : IMcpToolHost
 
     // ───────────── Lookups ─────────────
 
+    /// <summary>The project a call is about; the agent counts as working in it from then on.</summary>
     private Project ProjectFor(McpSession session, Args args)
+    {
+        var project = ResolveProject(session, args);
+        _main.Agents.WorkingIn(session, project);
+        return project;
+    }
+
+    private Project ResolveProject(McpSession session, Args args)
     {
         if (args.String("project") is { } name)
         {
@@ -606,7 +620,14 @@ public sealed class AgentTools : IMcpToolHost
                ?? throw new McpToolException($"Say which project with \"project\" (no project matches your working directory). Projects: {ProjectNames()}.");
     }
 
-    private (Project Project, ItemLocation Loc) FindItem(string id)
+    private (Project Project, ItemLocation Loc) FindItem(McpSession session, string id)
+    {
+        var found = FindItemIn(id);
+        _main.Agents.WorkingIn(session, found.Project);
+        return found;
+    }
+
+    private (Project Project, ItemLocation Loc) FindItemIn(string id)
     {
         id = id.Trim();
         var exact = Guid.TryParse(id, out var guid);

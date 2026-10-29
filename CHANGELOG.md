@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.12 (2026-10-29)
+
+- **Feed** (under Dashboard): a timeline of everything that happened across your projects. It shows items added and finished, AI agents' check-outs and resolutions, reviews, priority and tag changes, comments, releases, notes and new projects. Filter by project, what happened, who did it and period, or search. A click opens the item, discussion, release or note.
+- Pictures open in ProJict's own viewer, where you can mark them up: pen, highlighter, arrows, rectangles and ellipses in six colours. **Save copy** adds the marked-up picture as a new attachment; the original is never changed.
+- Projects show badges for the AI agents working in them, in the sidebar and on dashboard cards.
+- Items have a discussion button next to the ⋯ when you point at them.
+- Paste a screenshot or copied files into a category's **Add item** box (or drop files on it) to add an item with them attached.
+- ProJict also checks for updates every 4 hours while it's open.
+- Settings › AI agents & comments has setup for OpenAI Codex, OpenCode and other MCP clients as well as Claude Code, folded away under "Connect an AI agent".
+
 ## 0.1.11 (2026-10-29)
 
 - Fixed: right-clicking an item's text showed only Cut / Copy / Paste instead of the item's menu (priority, tag, discussion and more). Right-click anywhere on an item now opens its menu, which still has Cut / Copy / Paste.

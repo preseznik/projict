@@ -1,0 +1,66 @@
+<Window x:Class="ProJict.App.Views.ImageViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Width="1100" Height="760" MinWidth="560" MinHeight="360" WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <DockPanel>
+        <!-- Tools on the left, view and save on the right. -->
+        <Border DockPanel.Dock="Top" Padding="10,8" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Style="{StaticResource SubtleButton}" Content="Fit" Click="Fit_Click" ToolTip="Fit the picture in the window" />
+                    <Button Style="{StaticResource SubtleButton}" Content="100%" Click="ActualSize_Click" ToolTip="Actual size (Ctrl+mouse wheel zooms)" />
+                    <Button Style="{StaticResource SubtleButton}" Click="OpenExternal_Click" ToolTip="Open in your usual image viewer" Margin="4,0,0,0">
+                        <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE8A7;" /><TextBlock Text="Open with…" Margin="6,0,0,0" /></StackPanel>
+                    </Button>
+                    <Button x:Name="SaveButton" Style="{StaticResource AccentButtonStyle}" Content="Save copy" Margin="10,0,0,0" IsEnabled="False" Click="Save_Click"
+                            ToolTip="Save the picture with your markup as a new attachment; the original stays as it is" />
+                </StackPanel>
+                <WrapPanel>
+                    <ToggleButton x:Name="ViewTool" Style="{StaticResource SubtleToggle}" ToolTip="Look around (no drawing)" Click="Tool_Click" IsChecked="True" Content="&#xE7C9;" FontFamily="{StaticResource IconFont}" />
+                    <ToggleButton x:Name="PenTool" Style="{StaticResource SubtleToggle}" ToolTip="Pen" Click="Tool_Click" Content="&#xED63;" FontFamily="{StaticResource IconFont}" />
+                    <ToggleButton x:Name="HighlighterTool" Style="{StaticResource SubtleToggle}" ToolTip="Highlighter" Click="Tool_Click" Content="&#xE7E6;" FontFamily="{StaticResource IconFont}" />
+                    <ToggleButton x:Name="ArrowTool" Style="{StaticResource SubtleToggle}" ToolTip="Arrow" Click="Tool_Click" Content="&#xE72A;" FontFamily="{StaticResource IconFont}" />
+                    <ToggleButton x:Name="RectangleTool" Style="{StaticResource SubtleToggle}" ToolTip="Rectangle" Click="Tool_Click" Content="&#xE739;" FontFamily="{StaticResource IconFont}" />
+                    <ToggleButton x:Name="EllipseTool" Style="{StaticResource SubtleToggle}" ToolTip="Circle / ellipse" Click="Tool_Click" Content="&#xEA3A;" FontFamily="{StaticResource IconFont}" />
+                    <Border Width="1" Margin="8,4" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <ItemsControl x:Name="Swatches" Focusable="False" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Style="{StaticResource SubtleButton}" Padding="3" Click="Swatch_Click" ToolTip="{Binding Name}">
+                                    <Border Width="18" Height="18" CornerRadius="9" Background="{Binding Brush}" BorderThickness="2" BorderBrush="{Binding Ring}" />
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ComboBox x:Name="Thickness" Width="104" Margin="6,0,0,0" SelectedIndex="1" SelectionChanged="Thickness_SelectionChanged" ToolTip="Line thickness">
+                        <ComboBoxItem Content="Thin" />
+                        <ComboBoxItem Content="Medium" />
+                        <ComboBoxItem Content="Thick" />
+                    </ComboBox>
+                    <Border Width="1" Margin="8,4" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <Button x:Name="UndoButton" Style="{StaticResource SubtleIconButton}" Content="&#xE7A7;" ToolTip="Undo (Ctrl+Z)" Click="Undo_Click" IsEnabled="False" />
+                    <Button x:Name="ClearButton" Style="{StaticResource SubtleIconButton}" Content="&#xE74D;" ToolTip="Remove all markup" Click="Clear_Click" IsEnabled="False" />
+                </WrapPanel>
+            </DockPanel>
+        </Border>
+        <TextBlock x:Name="Status" DockPanel.Dock="Bottom" Style="{StaticResource MutedText}" Margin="12,4,12,6" TextTrimming="CharacterEllipsis" />
+
+        <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}" PreviewMouseWheel="Scroller_PreviewMouseWheel">
+            <Grid x:Name="Board" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+                <Grid.LayoutTransform>
+                    <ScaleTransform x:Name="Zoom" ScaleX="1" ScaleY="1" />
+                </Grid.LayoutTransform>
+                <Image x:Name="Picture" Stretch="Fill" />
+                <InkCanvas x:Name="Ink" Background="Transparent" EditingMode="None" StrokeCollected="Ink_StrokeCollected"
+                           PreviewMouseLeftButtonDown="Ink_MouseDown" PreviewMouseMove="Ink_MouseMove" PreviewMouseLeftButtonUp="Ink_MouseUp" />
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

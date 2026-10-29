@@ -1,0 +1,92 @@
+<UserControl x:Class="ProJict.App.Views.FeedView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ProJict.App.ViewModels">
+    <UserControl.Resources>
+        <!-- One entry: time, what kind of thing happened, who did what, to which item, and where. A click leads there. -->
+        <DataTemplate x:Key="FeedRow" DataType="{x:Type vm:FeedRowViewModel}">
+            <StackPanel>
+                <TextBlock Text="{Binding DayHeader}" Style="{StaticResource SectionTitle}" Margin="8,16,0,4"
+                           Visibility="{Binding DayHeader, Converter={StaticResource EmptyToVis}}" />
+                <Border x:Name="EntryRoot" Padding="8,7" CornerRadius="6" Background="Transparent" Cursor="Hand">
+                    <Border.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding OpenCommand}" />
+                    </Border.InputBindings>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="28" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Time}" ToolTip="{Binding TimeToolTip}" Style="{StaticResource MutedText}" VerticalAlignment="Top" Margin="0,1,0,0" />
+                        <TextBlock x:Name="KindGlyph" Grid.Column="1" Text="{Binding KindGlyph}" Style="{StaticResource Icon}" FontSize="13" VerticalAlignment="Top"
+                                   HorizontalAlignment="Left" Margin="0,2,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <StackPanel Grid.Column="2">
+                            <TextBlock TextWrapping="Wrap">
+                                <Run Text="{Binding Who, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" " /><Run Text="{Binding Action, Mode=OneWay}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </TextBlock>
+                            <TextBlock Text="{Binding Subject}" TextWrapping="Wrap" MaxHeight="40" TextTrimming="WordEllipsis" Margin="0,1,0,0" />
+                            <TextBlock Text="{Binding Detail}" Style="{StaticResource MutedText}" TextWrapping="Wrap" MaxHeight="34" TextTrimming="WordEllipsis"
+                                       Margin="0,2,0,0" Visibility="{Binding Detail, Converter={StaticResource EmptyToVis}}" />
+                            <TextBlock FontSize="11" Margin="0,3,0,0" Visibility="{Binding Where, Converter={StaticResource EmptyToVis}}">
+                                <Hyperlink Command="{Binding OpenProjectCommand}" Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           ToolTip="Open the project" TextDecorations="{x:Null}">
+                                    <Run Text="{Binding Where, Mode=OneWay}" />
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="EntryRoot" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="EntryRoot" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                    <Setter TargetName="KindGlyph" Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="28,20,20,12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="Feed" FontSize="28" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding Summary}" Style="{StaticResource MutedText}" FontSize="13" Margin="0,4,0,0" />
+        </StackPanel>
+
+        <WrapPanel Grid.Row="1" Margin="0,14,0,6">
+            <Grid Width="240" Margin="0,0,8,6">
+                <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Search the feed" />
+                <TextBlock Text="Search the feed" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" Visibility="{Binding SearchText, Converter={StaticResource InvEmptyToVis}}" />
+            </Grid>
+            <ComboBox ItemsSource="{Binding ProjectChoices}" SelectedItem="{Binding ProjectFilter}" Width="170" Margin="0,0,8,6"
+                      AutomationProperties.Name="Project" ToolTip="Only this project" />
+            <ComboBox ItemsSource="{x:Static vm:FeedViewModel.KindOptions}" SelectedItem="{Binding KindFilter}" DisplayMemberPath="Label" Width="200" Margin="0,0,8,6"
+                      AutomationProperties.Name="What happened" ToolTip="Only this kind of activity" />
+            <ComboBox ItemsSource="{Binding WhoChoices}" SelectedItem="{Binding WhoFilter}" Width="160" Margin="0,0,8,6"
+                      AutomationProperties.Name="Who" ToolTip="Only people, only AI agents, or one of them" />
+            <ComboBox ItemsSource="{x:Static vm:FeedViewModel.Periods}" SelectedItem="{Binding Period}" DisplayMemberPath="Label" Width="140" Margin="0,0,8,6"
+                      AutomationProperties.Name="Period" />
+            <Button Style="{StaticResource SubtleButton}" Content="Clear filters" Command="{Binding ClearFiltersCommand}" Margin="0,0,0,6"
+                    Visibility="{Binding IsFiltered, Converter={StaticResource BoolToVis}}" />
+        </WrapPanel>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+            <StackPanel MaxWidth="980" HorizontalAlignment="Left">
+                <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource FeedRow}" Focusable="False" />
+                <TextBlock Text="{Binding EmptyText}" Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="8,12,0,0"
+                           Visibility="{Binding Rows, Converter={StaticResource InvEmptyToVis}}" />
+                <Button Content="Show more" HorizontalAlignment="Left" Margin="8,12,0,12" Command="{Binding ShowMoreCommand}"
+                        Visibility="{Binding HasMore, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

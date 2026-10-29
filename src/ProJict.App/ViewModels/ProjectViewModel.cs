@@ -383,11 +383,12 @@ public sealed partial class ProjectViewModel : ObservableObject
         }
 
         // Empty rows left behind (Enter pressed, nothing typed) are removed once focus has really moved on.
-        if (item.Text.Trim().Length == 0 && item.Children.Count == 0)
+        // (One holding only an attachment, e.g. a pasted screenshot, stays.)
+        if (item.Text.Trim().Length == 0 && item.Children.Count == 0 && !item.HasAttachments)
         {
             Application.Current.Dispatcher.BeginInvoke(() =>
             {
-                if (_focusedItemId == item.Id || item.Text.Trim().Length > 0 || item.Children.Count > 0) return;
+                if (_focusedItemId == item.Id || item.Text.Trim().Length > 0 || item.Children.Count > 0 || item.HasAttachments) return;
                 if (Project.Find(item.Id) is not { } loc) return;
                 loc.Siblings.Remove(item);
                 Touch();
@@ -502,6 +503,36 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (item == null) return;
         Mutate(() => category.Model.Items.Add(item), [category]);
         RefreshTagFilters();
+    }
+
+    /// <summary>
+    /// Files or an image pasted (or dropped) into a category's Add item box: adds the item with what was typed so far
+    /// and attaches them, then puts the cursor in it so its text can be written or finished.
+    /// </summary>
+    public async Task AddItemWithAttachments(CategoryViewModel category, IReadOnlyList<string> files, byte[]? png)
+    {
+        List<Attachment> added;
+        try
+        {
+            added = await Task.Run(() => files.Where(File.Exists).Select(_state.Store.ImportAttachment).ToList());
+            if (png != null) added.Add(_state.Store.WriteAttachment($"Pasted image {DateTime.Now:yyyy-MM-dd HHmmss}.png", png));
+        }
+        catch (Exception ex)
+        {
+            _state.StatusText = "Could not attach: " + ex.Message;
+            return;
+        }
+        if (added.Count == 0)
+        {
+            _state.StatusText = "Only files can be attached, not folders.";
+            return;
+        }
+        var item = TxtListParser.ParseLine(category.NewItemText) ?? new TodoItem();
+        item.Attachments = added;
+        category.NewItemText = "";
+        Mutate(() => category.Model.Items.Add(item), [category], item.Id);
+        RefreshTagFilters();
+        _state.StatusText = added.Count == 1 ? $"Added an item with {added[0].FileName}." : $"Added an item with {added.Count} files.";
     }
 
     public void InsertSibling(ItemRowViewModel row, bool before)
@@ -905,6 +936,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".exe", ".com", ".bat", ".cmd", ".msi", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".scr", ".lnk", ".url", ".reg", ".hta", ".cpl" };
 
+    /// <summary>Pictures open in ProJict's own viewer (where they can be marked up); other files in their usual app.</summary>
     public void OpenAttachment(AttachmentViewModel attachment)
     {
         if (RunnableExtensions.Contains(Path.GetExtension(attachment.FileName)))
@@ -912,7 +944,33 @@ public sealed partial class ProjectViewModel : ObservableObject
             ShowAttachmentInFolder(attachment);
             return;
         }
+        if (!AttachmentExists(attachment)) return;
+        if (attachment.OpensInViewer)
+        {
+            Try(() => new ImageViewerWindow(attachment.Path, attachment.FileName, attachment.SaveCopy) { Owner = Application.Current.MainWindow }.Show());
+            return;
+        }
+        Try(() => ShellLauncher.OpenFile(attachment.Path));
+    }
+
+    public void OpenAttachmentExternally(AttachmentViewModel attachment)
+    {
         if (AttachmentExists(attachment)) Try(() => ShellLauncher.OpenFile(attachment.Path));
+    }
+
+    public Attachment WriteAttachment(string fileName, byte[] content) => _state.Store.WriteAttachment(fileName, content);
+
+    /// <summary>Adds an attachment (e.g. a marked-up copy) to an item; one undo step.</summary>
+    public void AttachToItem(Guid itemId, Attachment attachment) => AddAttachments(itemId, [attachment]);
+
+    public void AttachToNote(NoteDoc note, Attachment attachment)
+    {
+        if (!Project.Notes.Contains(note)) return;
+        Checkpoint();
+        (note.Attachments ??= []).Add(attachment);
+        Touch();
+        Notes.FirstOrDefault(n => n.Model == note)?.Refresh();
+        _state.StatusText = $"Attached {attachment.FileName}.";
     }
 
     public void ShowAttachmentInFolder(AttachmentViewModel attachment)
@@ -1271,7 +1329,7 @@ public sealed partial class NoteViewModel(ProjectViewModel owner, NoteDoc model)
     public NoteDoc Model { get; } = model;
 
     public IReadOnlyList<AttachmentViewModel> Attachments => _attachments ??=
-        (Model.Attachments ?? []).Select(a => new AttachmentViewModel(owner, a, () => owner.RemoveNoteAttachment(Model, a))).ToList();
+        (Model.Attachments ?? []).Select(a => new AttachmentViewModel(owner, a, () => owner.RemoveNoteAttachment(Model, a), copy => owner.AttachToNote(Model, copy))).ToList();
     public bool HasAttachments => Model.Attachments is { Count: > 0 };
 
     public void Refresh()

@@ -17,13 +17,27 @@ public sealed partial class AttachmentViewModel
 
     private readonly ProjectViewModel _owner;
     private readonly Action _remove;
+    private readonly Action<Attachment>? _attachCopy;
 
-    public AttachmentViewModel(ProjectViewModel owner, Attachment model, Action remove)
+    /// <param name="attachCopy">Attaches a marked-up copy to the same item or note.</param>
+    public AttachmentViewModel(ProjectViewModel owner, Attachment model, Action remove, Action<Attachment>? attachCopy = null)
     {
         _owner = owner;
         _remove = remove;
+        _attachCopy = attachCopy;
         Model = model;
         Path = owner.AttachmentPath(model);
+    }
+
+    /// <summary>A picture ProJict can show (and mark up) itself; other files open in their usual app.</summary>
+    public bool OpensInViewer => ShowsThumbnail && _attachCopy != null;
+
+    /// <summary>Stores a marked-up copy next to this attachment; returns its file name.</summary>
+    public string SaveCopy(byte[] png, string fileName)
+    {
+        var copy = _owner.WriteAttachment(fileName, png);
+        _attachCopy!(copy);
+        return copy.FileName;
     }
 
     public Attachment Model { get; }
@@ -35,6 +49,7 @@ public sealed partial class AttachmentViewModel
     public string ToolTip => $"{FileName} · {SizeText}\nClick to open · right-click for more";
 
     [RelayCommand] private void Open() => _owner.OpenAttachment(this);
+    [RelayCommand] private void OpenExternally() => _owner.OpenAttachmentExternally(this);
     [RelayCommand] private void ShowInFolder() => _owner.ShowAttachmentInFolder(this);
     [RelayCommand] private void Remove() => _remove();
 

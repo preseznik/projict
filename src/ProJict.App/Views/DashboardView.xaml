@@ -80,7 +80,11 @@
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-                                        <Ellipse Width="8" Height="8" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" Margin="0,0,8,0" />
+                                        <Ellipse Width="8" Height="8" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" Margin="0,0,8,0"
+                                                 Visibility="{Binding HasWorkers, Converter={StaticResource InvBoolToVis}}" />
+                                        <ItemsControl ItemsSource="{Binding Workers}" ItemsPanel="{StaticResource WorkerBadgePanel}" ItemTemplate="{StaticResource WorkerBadgeTemplate}"
+                                                      Focusable="False" Margin="-2,0,8,0" VerticalAlignment="Center" ToolTip="{Binding WorkersToolTip}"
+                                                      Visibility="{Binding HasWorkers, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="2" Text="{Binding Status}" Style="{StaticResource MutedText}" />
                                     </Grid>

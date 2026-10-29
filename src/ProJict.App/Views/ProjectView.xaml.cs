@@ -412,12 +412,39 @@ public partial class ProjectView : UserControl
         if (sender is not FrameworkElement { DataContext: AttachmentViewModel attachment } element) return;
         e.Handled = true;
         var menu = new ContextMenu { PlacementTarget = element };
-        menu.Items.Add(new MenuItem { Header = "Open", Command = attachment.OpenCommand });
+        menu.Items.Add(new MenuItem { Header = attachment.OpensInViewer ? "Open (mark up)" : "Open", Command = attachment.OpenCommand });
+        if (attachment.OpensInViewer)
+            menu.Items.Add(new MenuItem { Header = "Open in your image viewer", Command = attachment.OpenExternallyCommand });
         menu.Items.Add(new MenuItem { Header = "Show in folder", Command = attachment.ShowInFolderCommand });
         menu.Items.Add(new MenuItem { Header = "Copy path", Command = attachment.CopyPathCommand });
         menu.Items.Add(new Separator());
         menu.Items.Add(new MenuItem { Header = "Remove", Command = attachment.RemoveCommand });
         menu.IsOpen = true;
+    }
+
+    // ───────────── Add item box: paste or drop files ─────────────
+
+    private void AddItem_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || Keyboard.Modifiers != ModifierKeys.Control || !ClipboardAttachments.HasAttachment()) return;
+        if (sender is not FrameworkElement { DataContext: CategoryViewModel category }) return;
+        var (files, png) = ClipboardAttachments.Read();
+        _ = category.Owner.AddItemWithAttachments(category, files, png);
+        e.Handled = true;
+    }
+
+    private void AddItem_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void AddItem_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || sender is not FrameworkElement { DataContext: CategoryViewModel category }) return;
+        e.Handled = true;
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _ = category.Owner.AddItemWithAttachments(category, paths, null);
     }
 
     private void AddItemButton_Click(object sender, RoutedEventArgs e)
