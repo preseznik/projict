@@ -104,3 +104,22 @@ public sealed class GroupExpandedConverter : IMultiValueConverter
     public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>
+/// A sidebar group's comment count from (group name, counts by group): the count as text, or Visibility (hidden
+/// when the group has no discussion), depending on the target property.
+/// </summary>
+public sealed class GroupCommentCountConverter : IMultiValueConverter
+{
+    public object Convert(object?[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        var name = values.ElementAtOrDefault(0) as string;
+        var counts = values.ElementAtOrDefault(1) as IReadOnlyDictionary<string, int>;
+        var count = name != null && counts != null && counts.TryGetValue(name, out var n) ? n : 0;
+        if (targetType == typeof(Visibility)) return count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        return count.ToString(culture);
+    }
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

@@ -1,0 +1,801 @@
+using System.Globalization;
+using System.IO;
+using System.Runtime.ExceptionServices;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Windows.Threading;
+using ProJict.App.ViewModels;
+using ProJict.Core.Agents;
+using ProJict.Core.Features;
+using ProJict.Core.Import;
+using ProJict.Core.Model;
+
+namespace ProJict.App.Services;
+
+/// <summary>
+/// What AI agents can do in ProJict over MCP. Every call runs on the UI thread and edits through the project's view
+/// model, so the board updates live and each change is one Ctrl+Z step. Agents sign everything they do, an item one
+/// agent checked out can't be changed by another unless it takes over (which is logged), nothing here deletes, and
+/// what an agent finishes waits for your review.
+/// </summary>
+public sealed class AgentTools : IMcpToolHost
+{
+    private delegate string Handler(McpSession session, Args args, List<Attachment> files);
+
+    private readonly AppState _state;
+    private readonly MainViewModel _main;
+    private readonly Dispatcher _dispatcher;
+    private readonly Dictionary<string, (Handler Run, string? FilesArgument)> _handlers = [];
+    private readonly List<McpTool> _tools = [];
+    private readonly List<McpSession> _live = [];
+
+    public AgentTools(AppState state, MainViewModel main, Dispatcher dispatcher)
+    {
+        _state = state;
+        _main = main;
+        _dispatcher = dispatcher;
+
+        Add("list_projects", "List projects", "All projects with their repo folder, GitHub link and item counts.",
+            Schema(), ListProjects, readOnly: true);
+        Add("current_project", "Current project",
+            "Finds the project for a folder (by default your working directory): by its local repo folder, the git remote, or the folder name. " +
+            "Returns the project's categories and the user's standing instructions for it.",
+            Schema(("path", "string", "Folder to look up; defaults to the agent's working directory.", false)), CurrentProject, readOnly: true);
+        Add("set_label", "Set your label",
+            "Adds a short label to the name you sign with (e.g. the task or folder), so the user can tell parallel sessions apart: \"Claude Code · login fix\".",
+            Schema(("label", "string", "A few words; empty removes the label.", true)), SetLabel);
+        Add("list_items", "List items",
+            "Items of a project, flattened (sub-items name their parent). Filter by state, tag, category or text.",
+            Schema(ProjectArg,
+                ("state", "enum:open|todo|in_progress|done|review|all", "open (default) = to do and in progress; review = finished by an agent, waiting for the user.", false),
+                ("tag", "string", "Only items with this tag, e.g. BUG.", false),
+                ("category", "string", "Only this category.", false),
+                ("query", "string", "Words that must all appear in the item text or attachment names.", false),
+                ("limit", "integer", "Most items to return (default 50).", false)),
+            ListItems, readOnly: true);
+        Add("get_item", "Get item",
+            "One item with its sub-items, attachments (file paths you can open), history and discussion, plus the project's repo folder and instructions.",
+            Schema(IdArg), GetItem, readOnly: true);
+        Add("claim_item", "Check out item",
+            "Call before you start on an item: marks it in progress with your name. While you have it checked out, other agents can't change it. Returns the item.",
+            Schema(IdArg, ("note", "string", "Optional: what you plan to do.", false), ForceArg), ClaimItem);
+        Add("complete_item", "Complete item",
+            "Marks an item done once you finished it, with a short resolution (what changed, commit id) and optional evidence files such as screenshots. " +
+            "The user reviews it afterwards.",
+            Schema(IdArg, ("resolution", "string", "What you did, for the user.", true),
+                ("attachments", "string[]", "Files to attach, e.g. screenshots or logs (absolute paths or relative to your working directory).", false), ForceArg),
+            CompleteItem, filesArgument: "attachments");
+        Add("add_item", "Add item", "Adds a new item, e.g. a bug you found. The category is created if it doesn't exist.",
+            Schema(ProjectArg, ("text", "string", "The item text; a prefix like \"BUG: \" becomes its tag.", true),
+                ("category", "string", "Category name (required unless parent is given).", false),
+                ("tag", "string", "Tag such as BUG, ADD, CHANGE, FIX, IDEA.", false),
+                ("parent", "string", "Id of an item to add this under as a sub-item.", false), ForceArg),
+            AddItem);
+        Add("update_item", "Update item",
+            "Changes an item's text, tag or state, or comments on it. state: todo puts it back and frees it (e.g. when you give up), " +
+            "done marks it finished for review (prefer complete_item).",
+            Schema(IdArg, ("text", "string", "New text.", false), ("tag", "string", "New tag; empty removes it.", false),
+                ("state", "enum:todo|in_progress|done", "New state.", false),
+                ("comment", "string", "Posts a comment in the item's discussion (like add_comment).", false), ForceArg),
+            UpdateItem);
+        Add("attach_file", "Attach file", "Attaches files to an item. ProJict keeps its own copy.",
+            Schema(IdArg, ("paths", "string[]", "Files to attach (absolute or relative to your working directory).", true), ForceArg),
+            AttachFile, filesArgument: "paths");
+        Add("list_comments", "List comments",
+            "The discussion of an item, a category or a group as threads with replies. Without a target: the newest comments across a project " +
+            "(its items, categories and group), so you can see what the user asked or answered.",
+            Schema(("item", "string", "Item id.", false), ("category", "string", "Category name (in the project).", false),
+                ("group", "string", "Group name (e.g. Work).", false), ProjectArg,
+                ("since", "string", "Only comments after this date and time (yyyy-MM-dd HH:mm), when listing a whole project.", false),
+                ("limit", "integer", "Most comments when listing a whole project (default 30).", false)),
+            ListComments, readOnly: true);
+        Add("add_comment", "Add comment",
+            "Posts in the discussion of an item, a category or a group: a new thread, or a reply to a comment (reply_to). " +
+            "Use it to ask the user questions, report progress, or answer them.",
+            Schema(("text", "string", "The comment.", true), ("item", "string", "Item id.", false), ("category", "string", "Category name.", false),
+                ("group", "string", "Group name.", false), ProjectArg, ("reply_to", "string", "Id of the comment to reply to.", false)),
+            AddComment);
+        Add("read_docs", "Read notes", "Lists a project's notes (documents), or returns one note's text and attached files when a title is given.",
+            Schema(ProjectArg, ("title", "string", "Note to read.", false)), ReadDocs, readOnly: true);
+        Add("write_doc", "Write note",
+            "Creates or updates a note (shown in the project's Notes tab) for documentation or reports meant for people, with optional files such as charts or PDFs.",
+            Schema(ProjectArg, ("title", "string", "Note title; an existing note with this title is updated.", true),
+                ("text", "string", "Markdown text.", true),
+                ("mode", "enum:replace|append", "replace (default) or append to the existing text.", false),
+                ("attachments", "string[]", "Files to attach to the note.", false)),
+            WriteDoc, filesArgument: "attachments");
+        Add("draft_release", "Draft release notes",
+            "Patch notes from everything finished since the project's last release. With save=true the release is recorded and its items linked to it.",
+            Schema(ProjectArg, ("version", "string", "Version; defaults to the next patch version.", false),
+                ("title", "string", "Optional release title.", false), ("save", "boolean", "Record the release (default false).", false)),
+            DraftRelease);
+    }
+
+    public IReadOnlyList<McpTool> Tools => _tools;
+
+    public string Instructions =>
+        "ProJict is the user's to-do list app: projects contain categories, categories contain items (with sub-items, tags such as BUG or ADD, " +
+        "attachments, discussions, and a state: todo, in_progress or done). To work on items: current_project (or list_projects) to find the project, " +
+        "list_items to see what is open, claim_item to check an item out before you start (other agents then can't change it), then complete_item " +
+        "with a short resolution and evidence such as screenshots. Everything you do is signed with your name; if several sessions of you run at " +
+        "once, call set_label first. Everything you complete waits for the user's review, so only complete what you really finished; use " +
+        "update_item with state todo if you stop. Ask the user questions or report progress with add_comment, and check list_comments for their " +
+        "answers. File problems you notice with add_item, and put documentation or reports for people in a note with write_doc. " +
+        "Ids (items and comments) may be shortened to their first 8 characters.";
+
+    public void SessionStarted(McpSession session)
+    {
+        lock (_live) _live.Add(session);
+        _dispatcher.InvokeAsync(() => _state.StatusText = $"{session.AgentName} connected to ProJict.");
+    }
+
+    public void SessionEnded(McpSession session)
+    {
+        lock (_live) _live.Remove(session);
+    }
+
+    public async Task<string> CallAsync(McpSession session, string name, JsonElement arguments)
+    {
+        var (run, filesArgument) = _handlers[name];
+        var args = new Args(arguments);
+        // Files are copied off the UI thread; the edit itself then runs on it.
+        var files = filesArgument == null ? [] : await ImportFilesAsync(args.Strings(filesArgument), session.WorkingDirectory);
+        var (text, error) = await _dispatcher.InvokeAsync(() =>
+        {
+            try { return ((string?)run(session, args, files), (Exception?)null); }
+            catch (Exception ex) { return (null, ex); }
+        });
+        if (error != null) ExceptionDispatchInfo.Throw(error);
+        return text!;
+    }
+
+    // ───────────── Projects ─────────────
+
+    private string ListProjects(McpSession session, Args args, List<Attachment> files) => Json(new JsonObject
+    {
+        ["projects"] = new JsonArray(_state.Projects.Select(p => (JsonNode)ProjectJson(p)).ToArray()),
+    });
+
+    private string CurrentProject(McpSession session, Args args, List<Attachment> files)
+    {
+        var folder = args.String("path") ?? session.WorkingDirectory;
+        var match = ProjectMatcher.ForFolder(_state.Projects, folder)
+            ?? throw new McpToolException($"No project matches {folder ?? "your working directory"}. Projects: {ProjectNames()}. " +
+                                          "Pass \"project\" to the other tools, or ask the user to set the project's local repo folder in ProJict (Details tab).");
+        var json = ProjectJson(match.Project);
+        json["matchedBy"] = match.How;
+        if (!string.IsNullOrWhiteSpace(match.Project.PromptPreamble)) json["instructions"] = match.Project.PromptPreamble.Trim();
+        json["categories"] = new JsonArray(match.Project.Categories.Select(c => (JsonNode)new JsonObject
+        {
+            ["name"] = c.Name,
+            ["open"] = c.Items.Count(i => !i.IsDone),
+            ["done"] = c.Items.Count(i => i.IsDone),
+        }).ToArray());
+        return Json(json);
+    }
+
+    private string SetLabel(McpSession session, Args args, List<Attachment> files)
+    {
+        var label = args.String("label")?.Trim();
+        if (label is { Length: > 40 }) throw new McpToolException("Keep the label short (40 characters at most).");
+        var held = _state.Projects.SelectMany(p => p.Walk().Select(l => (Project: p, l.Item))).Where(x => Holds(session, x.Item)).ToList();
+        session.Label = string.IsNullOrEmpty(label) ? null : label;
+        // Items it has checked out move to its new name, so it keeps them.
+        foreach (var (project, item) in held) Edit(project, item.Id, i => i.ClaimedBy = session.AgentName);
+        return Json(new JsonObject { ["name"] = session.AgentName });
+    }
+
+    // ───────────── Items ─────────────
+
+    private string ListItems(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var state = args.String("state") ?? "open";
+        Func<TodoItem, bool> stateOk = state switch
+        {
+            "open" => i => !i.IsDone,
+            "todo" => i => i.State == ItemState.Todo,
+            "in_progress" => i => i.State == ItemState.InProgress,
+            "done" => i => i.IsDone,
+            "review" => i => i.NeedsReview,
+            "all" => _ => true,
+            _ => throw new McpToolException("state must be open, todo, in_progress, done, review or all."),
+        };
+        var tag = args.String("tag");
+        var category = args.String("category");
+        if (category != null && project.FindCategory(category) == null)
+            throw new McpToolException($"No category \"{category}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.");
+        var terms = (args.String("query") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var limit = Math.Clamp(args.Int("limit") ?? 50, 1, 500);
+
+        var matches = project.Walk().Where(l =>
+            stateOk(l.Item) &&
+            (tag == null || string.Equals(l.Item.Tag, tag, StringComparison.OrdinalIgnoreCase)) &&
+            (category == null || ProjectExtensions.CategoryNamesEqual(l.Category.Name, category)) &&
+            terms.All(t => l.Item.SearchText().Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
+        return Json(new JsonObject
+        {
+            ["project"] = project.Name,
+            ["state"] = state,
+            ["total"] = matches.Count,
+            ["items"] = new JsonArray(matches.Take(limit).Select(l => (JsonNode)ItemJson(l, details: false)).ToArray()),
+            ["truncated"] = matches.Count > limit,
+        });
+    }
+
+    private string GetItem(McpSession session, Args args, List<Attachment> files)
+    {
+        var (project, loc) = FindItem(args.Required("id"));
+        return Json(ItemDetails(project, loc));
+    }
+
+    private string ClaimItem(McpSession session, Args args, List<Attachment> files)
+    {
+        var (project, loc) = FindItem(args.Required("id"));
+        var item = loc.Item;
+        if (item.IsDone) throw new McpToolException("This item is already done. Use update_item with state todo to reopen it first.");
+        var takenFrom = CheckOut(session, item, args);
+        var agent = session.AgentName;
+        var note = args.String("note");
+        Edit(project, item.Id, i =>
+        {
+            if (takenFrom != null) i.AddActivity(agent, $"Took it over from {takenFrom}.", agent: true);
+            if (i.State != ItemState.InProgress) i.SetState(ItemState.InProgress);
+            i.ClaimedBy = agent;
+            i.AddActivity(agent, string.IsNullOrWhiteSpace(note) ? "Checked it out." : "Checked it out: " + note.Trim(), agent: true);
+        });
+        session.Claimed.Add(item.Id);
+        _state.StatusText = $"{agent} is working on “{Short(item.Text)}” ({project.Name}).";
+        return Json(ItemDetails(project, project.Find(item.Id)!));
+    }
+
+    private string CompleteItem(McpSession session, Args args, List<Attachment> files)
+    {
+        var (project, loc) = FindItem(args.Required("id"));
+        var resolution = args.Required("resolution").Trim();
+        var takenFrom = CheckOut(session, loc.Item, args);
+        var agent = session.AgentName;
+        Edit(project, loc.Item.Id, i =>
+        {
+            if (takenFrom != null) i.AddActivity(agent, $"Took it over from {takenFrom}.", agent: true);
+            if (!i.IsDone) i.SetState(ItemState.Done);
+            i.NeedsReview = true;
+            i.AddActivity(agent, "Done: " + resolution, agent: true);
+            if (files.Count > 0) (i.Attachments ??= []).AddRange(files);
+        });
+        session.Claimed.Remove(loc.Item.Id);
+        _state.StatusText = $"{agent} finished “{Short(loc.Item.Text)}” ({project.Name}); it waits for your review.";
+        var result = new JsonObject { ["id"] = ShortId(loc.Item.Id), ["state"] = "done", ["needsReview"] = true, ["attached"] = files.Count };
+        var open = loc.Item.Descendants().Count(d => !d.IsDone);
+        if (open > 0) result["note"] = $"{open} sub-item(s) are still open; complete or update them separately.";
+        return Json(result);
+    }
+
+    private string AddItem(McpSession session, Args args, List<Attachment> files)
+    {
+        var text = args.Required("text").Trim();
+        Project project;
+        Guid? parentId = null;
+        if (args.String("parent") is { } parentText)
+        {
+            // A sub-item goes into its parent's project.
+            var (parentProject, parentLoc) = FindItem(parentText);
+            if (args.String("project") != null && ProjectFor(session, args) != parentProject) throw new McpToolException("The parent item is in another project.");
+            CheckOut(session, parentLoc.Item, args);
+            project = parentProject;
+            parentId = parentLoc.Item.Id;
+        }
+        else project = ProjectFor(session, args);
+        var category = args.String("category");
+        if (parentId == null && string.IsNullOrWhiteSpace(category))
+            throw new McpToolException($"Say which category (existing ones: {string.Join(", ", project.Categories.Select(c => c.Name))}), or give a parent item.");
+
+        var (parsedTag, parsedText) = TxtListParser.SplitTag(text);
+        var tag = args.String("tag") is { } explicitTag ? (explicitTag.Trim().Length == 0 ? null : explicitTag.Trim().ToUpperInvariant()) : parsedTag;
+        var item = new TodoItem { Text = parsedTag != null && parsedText.Length > 0 ? parsedText : text, Tag = tag };
+        item.AddActivity(session.AgentName, "Added it.", agent: true);
+        _main.GetProjectViewModel(project).AgentAdd(item, category, parentId);
+        _state.StatusText = $"{session.AgentName} added “{Short(item.Text)}” to {project.Name}.";
+        return Json(ItemJson(project.Find(item.Id)!, details: false));
+    }
+
+    private string UpdateItem(McpSession session, Args args, List<Attachment> files)
+    {
+        var (project, loc) = FindItem(args.Required("id"));
+        var text = args.String("text");
+        var tag = args.String("tag");
+        var comment = args.String("comment");
+        ItemState? state = args.String("state") switch
+        {
+            null => null,
+            "todo" => ItemState.Todo,
+            "in_progress" => ItemState.InProgress,
+            "done" => ItemState.Done,
+            _ => throw new McpToolException("state must be todo, in_progress or done."),
+        };
+        if (text == null && tag == null && state == null && string.IsNullOrWhiteSpace(comment))
+            throw new McpToolException("Nothing to change: give text, tag, state or comment.");
+        if (text != null && text.Trim().Length == 0) throw new McpToolException("The text can't be empty.");
+
+        var agent = session.AgentName;
+        var changes = text != null || tag != null || state != null;
+        var takenFrom = changes ? CheckOut(session, loc.Item, args) : null;
+        if (changes)
+        {
+            Edit(project, loc.Item.Id, i =>
+            {
+                if (takenFrom != null) i.AddActivity(agent, $"Took it over from {takenFrom}.", agent: true);
+                if (text != null && text.Trim() != i.Text)
+                {
+                    i.Text = text.Trim();
+                    i.AddActivity(agent, "Changed the text.", agent: true);
+                }
+                var newTag = tag == null ? i.Tag : tag.Trim().Length == 0 ? null : tag.Trim().ToUpperInvariant();
+                if (newTag != i.Tag)
+                {
+                    i.AddActivity(agent, newTag == null ? $"Removed the tag {i.Tag}." : $"Tagged it {newTag}.", agent: true);
+                    i.Tag = newTag;
+                }
+                if (state is { } s && s != i.State)
+                {
+                    i.SetState(s);
+                    if (s == ItemState.InProgress) i.ClaimedBy = agent;
+                    if (s == ItemState.Done) i.NeedsReview = true;
+                    i.AddActivity(agent, s switch { ItemState.Done => "Marked it done.", ItemState.InProgress => "Checked it out.", _ => "Put it back to do." }, agent: true);
+                }
+            });
+            if (state == ItemState.InProgress) session.Claimed.Add(loc.Item.Id);
+            else if (state != null) session.Claimed.Remove(loc.Item.Id);
+        }
+        if (!string.IsNullOrWhiteSpace(comment))
+            _main.GetProjectViewModel(project).PostComment(loc.Item.Id, NewComment(session, comment), null);
+        _state.StatusText = $"{agent} updated “{Short(loc.Item.Text)}” ({project.Name}).";
+        return Json(ItemJson(project.Find(loc.Item.Id)!, details: false));
+    }
+
+    private string AttachFile(McpSession session, Args args, List<Attachment> files)
+    {
+        var (project, loc) = FindItem(args.Required("id"));
+        if (files.Count == 0) throw new McpToolException("Give at least one file in paths.");
+        var takenFrom = CheckOut(session, loc.Item, args);
+        var agent = session.AgentName;
+        Edit(project, loc.Item.Id, i =>
+        {
+            if (takenFrom != null)
+            {
+                i.AddActivity(agent, $"Took it over from {takenFrom}.", agent: true);
+                i.ClaimedBy = agent;
+            }
+            (i.Attachments ??= []).AddRange(files);
+            i.AddActivity(agent, "Attached " + string.Join(", ", files.Select(f => f.FileName)) + ".", agent: true);
+        });
+        if (takenFrom != null) session.Claimed.Add(loc.Item.Id);
+        _state.StatusText = $"{agent} attached {files.Count} file(s) to “{Short(loc.Item.Text)}”.";
+        return Json(new JsonObject { ["id"] = ShortId(loc.Item.Id), ["attachments"] = Paths(project.Find(loc.Item.Id)!.Item.Attachments) });
+    }
+
+    /// <summary>
+    /// Another agent's check-out blocks changes. The same agent may continue its own check-out, also from a new session
+    /// once the old one is gone. With force=true it takes over: returns whose check-out it was, for the history.
+    /// </summary>
+    private string? CheckOut(McpSession session, TodoItem item, Args args)
+    {
+        if (item.State != ItemState.InProgress || item.ClaimedBy == null || Holds(session, item)) return null;
+        McpSession? holder;
+        lock (_live) holder = _live.FirstOrDefault(s => s != session && Holds(s, item));
+        if (holder == null && string.Equals(item.ClaimedBy, session.AgentName, StringComparison.OrdinalIgnoreCase))
+        {
+            session.Claimed.Add(item.Id);
+            return null;
+        }
+        if (args.Bool("force") == true) return item.ClaimedBy;
+        throw new McpToolException(holder == null
+            ? $"{item.ClaimedBy} has this item checked out but isn't connected any more. Pass force=true to take it over, or leave it for the user to release."
+            : holder.AgentName == session.AgentName
+                ? $"Another {session.AgentName} session has this item checked out. Call set_label so your sessions can be told apart, pick another item, or pass force=true to take it over."
+                : $"{item.ClaimedBy} has this item checked out and is still connected. Talk to it or the user with add_comment, pick another item, or pass force=true to take it over.");
+    }
+
+    /// <summary>The session checked the item out, and nobody (another agent, the user) changed that since.</summary>
+    private static bool Holds(McpSession session, TodoItem item) =>
+        session.Claimed.Contains(item.Id) && item.State == ItemState.InProgress &&
+        string.Equals(item.ClaimedBy, session.AgentName, StringComparison.OrdinalIgnoreCase);
+
+    // ───────────── Discussions ─────────────
+
+    private sealed record CommentTarget(string Label, Project? Project, Guid? TargetId, string? Group, List<Comment>? Threads);
+
+    private CommentTarget? TargetFor(McpSession session, Args args)
+    {
+        var given = new[] { "item", "category", "group" }.Count(n => args.String(n) != null);
+        if (given > 1) throw new McpToolException("Give only one of item, category or group.");
+        if (args.String("item") is { } id)
+        {
+            var (project, loc) = FindItem(id);
+            return new CommentTarget($"item {ShortId(loc.Item.Id)} “{Short(loc.Item.Text)}” ({project.Name})", project, loc.Item.Id, null, loc.Item.Comments);
+        }
+        if (args.String("category") is { } name)
+        {
+            var project = ProjectFor(session, args);
+            var category = project.FindCategory(name)
+                ?? throw new McpToolException($"No category \"{name}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.");
+            return new CommentTarget($"category {category.Name} ({project.Name})", project, category.Id, null, category.Comments);
+        }
+        if (args.String("group") is { } group)
+        {
+            var match = _state.Settings.Groups.FirstOrDefault(g => string.Equals(g, group.Trim(), StringComparison.OrdinalIgnoreCase))
+                ?? throw new McpToolException($"No group \"{group}\". Groups: {string.Join(", ", _state.Settings.Groups)}.");
+            return new CommentTarget($"group {match}", null, null, match, _state.Settings.CommentsFor(match));
+        }
+        return null;
+    }
+
+    private string ListComments(McpSession session, Args args, List<Attachment> files)
+    {
+        if (TargetFor(session, args) is { } target)
+        {
+            return Json(new JsonObject
+            {
+                ["target"] = target.Label,
+                ["threads"] = new JsonArray((target.Threads ?? []).Select(c => (JsonNode)CommentJson(c, nested: true)).ToArray()),
+            });
+        }
+
+        // The newest comments across a project: its items, its categories and its group.
+        var project = ProjectFor(session, args);
+        DateTime? since = args.String("since") is { } s
+            ? DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var t) ? t
+                : throw new McpToolException("since must be a date and time like 2026-10-29 14:00.")
+            : null;
+        var limit = Math.Clamp(args.Int("limit") ?? 30, 1, 200);
+        var all = new List<(Comment Comment, Comment? Parent, JsonObject Where)>();
+        foreach (var loc in project.Walk())
+            foreach (var (comment, parent) in loc.Item.Comments.Walk())
+                all.Add((comment, parent, new JsonObject { ["item"] = ShortId(loc.Item.Id), ["itemText"] = Short(loc.Item.Text) }));
+        foreach (var category in project.Categories)
+            foreach (var (comment, parent) in category.Comments.Walk())
+                all.Add((comment, parent, new JsonObject { ["category"] = category.Name }));
+        if (!project.IsInbox)
+            foreach (var (comment, parent) in _state.Settings.CommentsFor(project.Group).Walk())
+                all.Add((comment, parent, new JsonObject { ["group"] = project.Group }));
+        var recent = all.Where(e => !e.Comment.Deleted && (since == null || e.Comment.At > since)).OrderByDescending(e => e.Comment.At).ToList();
+        return Json(new JsonObject
+        {
+            ["project"] = project.Name,
+            ["total"] = recent.Count,
+            ["comments"] = new JsonArray(recent.Take(limit).Select(e =>
+            {
+                var json = CommentJson(e.Comment, nested: false);
+                json["on"] = e.Where;
+                if (e.Parent != null) json["replyTo"] = ShortId(e.Parent.Id);
+                return (JsonNode)json;
+            }).ToArray()),
+        });
+    }
+
+    private string AddComment(McpSession session, Args args, List<Attachment> files)
+    {
+        var text = args.Required("text").Trim();
+        var target = TargetFor(session, args) ?? throw new McpToolException("Say what to comment on: item, category or group.");
+        Guid? replyTo = null;
+        if (args.String("reply_to") is { } replyText)
+        {
+            var matches = target.Threads.Walk().Select(e => e.Comment)
+                .Where(c => c.Id.ToString().StartsWith(replyText.Trim(), StringComparison.OrdinalIgnoreCase)).Take(2).ToList();
+            replyTo = matches.Count == 1 ? matches[0].Id
+                : throw new McpToolException(matches.Count == 0 ? $"No comment {replyText} on this {target.Label}; list_comments shows the ids." : "Give more of the comment id.");
+        }
+        var comment = NewComment(session, text);
+        if (target.Group != null) _state.PostGroupComment(target.Group, comment, replyTo);
+        else _main.GetProjectViewModel(target.Project!).PostComment(target.TargetId!.Value, comment, replyTo);
+        _state.StatusText = $"{session.AgentName} {(replyTo == null ? "commented on" : "replied on")} {target.Label}.";
+        return Json(new JsonObject { ["id"] = ShortId(comment.Id), ["on"] = target.Label });
+    }
+
+    private static Comment NewComment(McpSession session, string text) =>
+        new() { By = session.AgentName, Agent = true, Text = text.Trim() };
+
+    // ───────────── Notes & releases ─────────────
+
+    private string ReadDocs(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var title = args.String("title");
+        if (title == null)
+        {
+            return Json(new JsonObject
+            {
+                ["project"] = project.Name,
+                ["notes"] = new JsonArray(project.Notes.Select(n => (JsonNode)new JsonObject
+                {
+                    ["title"] = n.Title,
+                    ["updated"] = n.UpdatedAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+                    ["updatedBy"] = n.UpdatedBy,
+                    ["characters"] = n.Text.Length,
+                    ["attachments"] = n.Attachments?.Count ?? 0,
+                }).ToArray()),
+            });
+        }
+        var candidates = project.Notes.Where(n => string.Equals(n.Title.Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count == 0) candidates = project.Notes.Where(n => n.Title.Contains(title.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count != 1)
+            throw new McpToolException(candidates.Count == 0
+                ? $"No note \"{title}\" in {project.Name}. Notes: {string.Join(", ", project.Notes.Select(n => n.Title))}."
+                : $"Several notes match \"{title}\": {string.Join(", ", candidates.Select(n => n.Title))}.");
+        var note = candidates[0];
+        return Json(new JsonObject { ["title"] = note.Title, ["updatedBy"] = note.UpdatedBy, ["text"] = note.Text, ["attachments"] = Paths(note.Attachments) });
+    }
+
+    private string WriteDoc(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var title = args.Required("title").Trim();
+        var text = args.Required("text");
+        var append = args.String("mode") switch
+        {
+            null or "replace" => false,
+            "append" => true,
+            _ => throw new McpToolException("mode must be replace or append."),
+        };
+        var note = _main.GetProjectViewModel(project).AgentWriteDoc(title, text, append, files, session.AgentName, out var created);
+        _state.StatusText = $"{session.AgentName} {(created ? "wrote" : "updated")} the note “{note.Title}” ({project.Name}).";
+        return Json(new JsonObject
+        {
+            ["title"] = note.Title,
+            ["created"] = created,
+            ["characters"] = note.Text.Length,
+            ["attachments"] = Paths(note.Attachments),
+        });
+    }
+
+    private string DraftRelease(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var entries = PatchNotesBuilder.Candidates(project);
+        if (entries.Count == 0) throw new McpToolException($"Nothing in {project.Name} was finished since its last release.");
+        var version = args.String("version")?.Trim() is { Length: > 0 } v ? v : PatchNotesBuilder.SuggestNextVersion(project);
+        var title = args.String("title");
+        var markdown = PatchNotesBuilder.Build(project, version, DateTime.Now, title, entries, markdown: true);
+        var unreviewed = entries.Count(e => e.Item.NeedsReview || e.Item.Descendants().Any(d => d.NeedsReview));
+        var save = args.Bool("save") == true;
+        if (save)
+        {
+            _main.GetProjectViewModel(project).AgentSaveRelease(version, title, entries, markdown, session.AgentName);
+            _state.StatusText = $"{session.AgentName} recorded release {version} of {project.Name}.";
+        }
+        var result = new JsonObject { ["version"] = version, ["items"] = entries.Count, ["saved"] = save, ["markdown"] = markdown };
+        if (unreviewed > 0) result["note"] = $"{unreviewed} of these items still wait for the user's review.";
+        return Json(result);
+    }
+
+    // ───────────── Lookups ─────────────
+
+    private Project ProjectFor(McpSession session, Args args)
+    {
+        if (args.String("project") is { } name)
+        {
+            name = name.Trim();
+            return _state.Projects.FirstOrDefault(p => p.Id.ToString().Equals(name, StringComparison.OrdinalIgnoreCase))
+                   ?? _state.Projects.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || p.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+                   ?? _state.Projects.FirstOrDefault(p => GitHubReleases.MatchKey(p.Name) == GitHubReleases.MatchKey(name))
+                   ?? throw new McpToolException($"No project \"{name}\". Projects: {ProjectNames()}.");
+        }
+        return ProjectMatcher.ForFolder(_state.Projects, session.WorkingDirectory)?.Project
+               ?? throw new McpToolException($"Say which project with \"project\" (no project matches your working directory). Projects: {ProjectNames()}.");
+    }
+
+    private (Project Project, ItemLocation Loc) FindItem(string id)
+    {
+        id = id.Trim();
+        var exact = Guid.TryParse(id, out var guid);
+        if (!exact && id.Length < 6) throw new McpToolException("Give the item id (at least its first 6 characters).");
+        var found = _state.Projects
+            .SelectMany(p => p.Walk().Select(l => (Project: p, Loc: l)))
+            .Where(x => exact ? x.Loc.Item.Id == guid : x.Loc.Item.Id.ToString().StartsWith(id, StringComparison.OrdinalIgnoreCase))
+            .Take(2)
+            .ToList();
+        return found.Count switch
+        {
+            1 => found[0],
+            0 => throw new McpToolException($"No item with id {id}. Use list_items to find it."),
+            _ => throw new McpToolException($"Several items start with {id}; give more of the id."),
+        };
+    }
+
+    private void Edit(Project project, Guid itemId, Action<TodoItem> change) =>
+        _main.GetProjectViewModel(project).AgentEdit(itemId, change);
+
+    private async Task<List<Attachment>> ImportFilesAsync(List<string> paths, string? workingDirectory)
+    {
+        var full = paths.Select(p => Path.GetFullPath(Path.IsPathRooted(p) || workingDirectory == null ? p : Path.Combine(workingDirectory, p))).ToList();
+        var missing = full.Where(p => !File.Exists(p)).ToList();
+        if (missing.Count > 0) throw new McpToolException("File not found: " + string.Join(", ", missing));
+        return await Task.Run(() => full.Select(_state.Store.ImportAttachment).ToList());
+    }
+
+    // ───────────── JSON ─────────────
+
+    private JsonObject ProjectJson(Project p)
+    {
+        var stats = PortfolioStats.For(p);
+        var json = new JsonObject { ["name"] = p.Name, ["key"] = p.Key };
+        if (p.IsInbox) json["inbox"] = true;
+        else
+        {
+            json["group"] = p.Group;
+            json["status"] = p.Status.ToString();
+        }
+        if (!string.IsNullOrWhiteSpace(p.RepoPath)) json["repoPath"] = p.RepoPath;
+        if (!string.IsNullOrWhiteSpace(p.GitHubUrl)) json["gitHub"] = p.GitHubUrl;
+        json["open"] = stats.Open;
+        json["inProgress"] = stats.InProgress;
+        json["done"] = stats.Done;
+        if (stats.ToReview > 0) json["toReview"] = stats.ToReview;
+        return json;
+    }
+
+    private JsonObject ItemJson(ItemLocation loc, bool details)
+    {
+        var item = loc.Item;
+        var json = new JsonObject
+        {
+            ["id"] = ShortId(item.Id),
+            ["category"] = loc.Category.Name,
+            ["text"] = item.Text,
+            ["state"] = StateName(item.State),
+        };
+        if (item.Tag != null) json["tag"] = item.Tag;
+        if (loc.Parent != null) json["parent"] = ShortId(loc.Parent.Id);
+        if (item.ClaimedBy != null && item.State == ItemState.InProgress) json["checkedOutBy"] = item.ClaimedBy;
+        if (item.NeedsReview) json["needsReview"] = true;
+        if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
+        if (details)
+        {
+            if (item.Activity is { Count: > 0 } log)
+                json["history"] = new JsonArray(log.Select(a => (JsonNode)$"{a.At.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} {a.By}: {a.Text}").ToArray());
+            if (item.Comments is { Count: > 0 } threads)
+                json["discussion"] = new JsonArray(threads.Select(c => (JsonNode)CommentJson(c, nested: true)).ToArray());
+            if (item.Children.Count > 0)
+                json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c)).ToArray());
+        }
+        else
+        {
+            if (item.Children.Count > 0) json["subItems"] = item.Children.Count;
+            if (item.Comments.CountComments() is > 0 and var count) json["comments"] = count;
+        }
+        return json;
+    }
+
+    private JsonObject ChildJson(TodoItem item)
+    {
+        var json = new JsonObject { ["id"] = ShortId(item.Id), ["text"] = item.Text, ["state"] = StateName(item.State) };
+        if (item.Tag != null) json["tag"] = item.Tag;
+        if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
+        if (item.Comments.CountComments() is > 0 and var count) json["comments"] = count;
+        if (item.Children.Count > 0) json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c)).ToArray());
+        return json;
+    }
+
+    private static JsonObject CommentJson(Comment comment, bool nested)
+    {
+        var json = new JsonObject
+        {
+            ["id"] = ShortId(comment.Id),
+            ["by"] = comment.By,
+            ["at"] = comment.At.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+            ["text"] = comment.Deleted ? "(deleted)" : comment.Text,
+        };
+        if (comment.Agent) json["agent"] = true;
+        if (nested && comment.Replies is { Count: > 0 } replies)
+            json["replies"] = new JsonArray(replies.Select(r => (JsonNode)CommentJson(r, nested: true)).ToArray());
+        return json;
+    }
+
+    private JsonObject ItemDetails(Project project, ItemLocation loc)
+    {
+        var json = ItemJson(loc, details: true);
+        var context = new JsonObject { ["name"] = project.Name };
+        if (!string.IsNullOrWhiteSpace(project.RepoPath)) context["repoPath"] = project.RepoPath;
+        if (!string.IsNullOrWhiteSpace(project.GitHubUrl)) context["gitHub"] = project.GitHubUrl;
+        if (!string.IsNullOrWhiteSpace(project.PromptPreamble)) context["instructions"] = project.PromptPreamble.Trim();
+        json["project"] = context;
+        return json;
+    }
+
+    private JsonArray Paths(List<Attachment>? attachments) =>
+        new((attachments ?? []).Select(a => (JsonNode)_state.Store.AttachmentPath(a)).ToArray());
+
+    private string ProjectNames() => string.Join(", ", _state.Projects.Where(p => !p.IsInbox).Select(p => p.Name));
+
+    // The agent reads this text as is, so letters like č or ž stay readable instead of becoming č.
+    private static readonly JsonSerializerOptions ReadableJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    private static string Json(JsonObject json) => json.ToJsonString(ReadableJson);
+
+    private static string ShortId(Guid id) => id.ToString()[..8];
+
+    private static string StateName(ItemState state) => state switch
+    {
+        ItemState.InProgress => "in_progress",
+        ItemState.Done => "done",
+        _ => "todo",
+    };
+
+    private static string Short(string text)
+    {
+        var line = text.Replace("\r\n", "\n").Split('\n')[0].Trim();
+        return line.Length > 60 ? line[..60] + "…" : line;
+    }
+
+    // ───────────── Tool definitions ─────────────
+
+    private static readonly (string, string, string, bool) ProjectArg =
+        ("project", "string", "Project name or key; defaults to the project matching your working directory.", false);
+    private static readonly (string, string, string, bool) IdArg =
+        ("id", "string", "Item id (the first 8 characters are enough).", true);
+    private static readonly (string, string, string, bool) ForceArg =
+        ("force", "boolean", "Take the item over from another agent that has it checked out (recorded in its history).", false);
+
+    private void Add(string name, string title, string description, JsonObject schema, Handler run, bool readOnly = false, string? filesArgument = null)
+    {
+        _tools.Add(new McpTool(name, title, description, schema, readOnly));
+        _handlers[name] = (run, filesArgument);
+    }
+
+    /// <summary>Types: string, integer, boolean, string[] or enum:a|b|c.</summary>
+    private static JsonObject Schema(params (string Name, string Type, string Description, bool Required)[] properties)
+    {
+        var props = new JsonObject();
+        foreach (var (name, type, description, _) in properties)
+        {
+            JsonObject property = type switch
+            {
+                "string[]" => new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "string" } },
+                _ when type.StartsWith("enum:", StringComparison.Ordinal) => new JsonObject
+                {
+                    ["type"] = "string",
+                    ["enum"] = new JsonArray(type[5..].Split('|').Select(v => (JsonNode)v).ToArray()),
+                },
+                _ => new JsonObject { ["type"] = type },
+            };
+            property["description"] = description;
+            props[name] = property;
+        }
+        var schema = new JsonObject { ["type"] = "object", ["properties"] = props };
+        var required = properties.Where(p => p.Required).Select(p => (JsonNode)p.Name).ToArray();
+        if (required.Length > 0) schema["required"] = new JsonArray(required);
+        return schema;
+    }
+
+    /// <summary>Tool arguments, tolerant of numbers or booleans sent as strings.</summary>
+    private readonly struct Args(JsonElement json)
+    {
+        private JsonElement? Get(string name) =>
+            json.ValueKind == JsonValueKind.Object && json.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value : null;
+
+        public string? String(string name) => Get(name) is { } v ? v.ValueKind == JsonValueKind.String ? v.GetString() : v.ToString() : null;
+
+        public string Required(string name) =>
+            String(name) is { } s && s.Trim().Length > 0 ? s : throw new McpToolException($"\"{name}\" is required.");
+
+        public int? Int(string name)
+        {
+            if (Get(name) is not { } v) return null;
+            if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return n;
+            return int.TryParse(v.ToString(), out n) ? n : null;
+        }
+
+        public bool? Bool(string name) => Get(name) is { } v
+            ? v.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => bool.TryParse(v.ToString(), out var b) ? b : null,
+            }
+            : null;
+
+        public List<string> Strings(string name) => Get(name) is not { } v ? []
+            : v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(e => e.ToString()).Where(s => s.Trim().Length > 0).ToList()
+            : [v.ToString()];
+    }
+}

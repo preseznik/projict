@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.9 (2026-10-29)
+
+- AI agents such as Claude Code can work in ProJict (over MCP). Copy the command from Settings › AI agents & comments and run it once. Agents find the project for the folder they work in, check items out, complete them with a resolution and screenshots, add items, attach files, write notes and draft release notes. They never delete anything, and Ctrl+Z undoes their changes.
+- An item an agent checked out can't be changed by another agent unless it takes it over, which is written to the item's history. Right-click › Release check-out frees an item an agent left behind.
+- Everything is signed: item history, notes and releases show who did them, you or which agent. Agents can add a label to their name so parallel sessions can be told apart.
+- Discussions with threaded replies on items, categories and groups, for you and AI agents. Open one from an item's right-click menu or its comment chip, the speech bubble on a category, or right-click › Discussion on a group in the sidebar.
+- Under each item, a chip for everyone who worked on it; click one to show only what they worked on.
+- Items an agent finished show a "review" chip until you accept them. The dashboard lists everything waiting for review and recent agent activity, and the state filter has "Needs review".
+- Notes can have attached files.
+- Your name for comments and history is set in Settings (it defaults to your Windows user name).
+- Settings scroll on short screens, and the board's toolbar shows only icons when it's narrow.
+
 ## 0.1.8 (2026-10-29)
 
 - Attach files and images to items: drag files onto an item, paste a screenshot or copied files with Ctrl+V, or right-click › Attach files…. Images show as thumbnails under the item, and a click opens the file.

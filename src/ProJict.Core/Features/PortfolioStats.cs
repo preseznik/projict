@@ -2,7 +2,8 @@ using ProJict.Core.Model;
 
 namespace ProJict.Core.Features;
 
-public sealed record ProjectStats(int Open, int InProgress, int Done, int OpenBugs, DateTime LastActivity)
+/// <param name="ToReview">Items (sub-items included) an AI agent finished that you haven't checked yet.</param>
+public sealed record ProjectStats(int Open, int InProgress, int Done, int OpenBugs, DateTime LastActivity, int ToReview = 0)
 {
     public int Total => Open + Done;
     public double Progress => Total == 0 ? 0 : (double)Done / Total;
@@ -24,7 +25,7 @@ public static class PortfolioStats
             if (item.State == ItemState.InProgress) inProgress++;
             if (item.IsBugLike()) bugs++;
         }
-        return new ProjectStats(open, inProgress, done, bugs, project.UpdatedAt);
+        return new ProjectStats(open, inProgress, done, bugs, project.UpdatedAt, project.Walk().Count(l => l.Item.NeedsReview));
     }
 
     /// <summary>Items finished in the app (not imported) since <paramref name="since"/>, newest first.</summary>

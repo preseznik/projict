@@ -33,6 +33,7 @@
             <ColumnDefinition Width="260" MinWidth="200" MaxWidth="420" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <!-- Sidebar -->
@@ -115,6 +116,8 @@
                                                                     <MenuItem Header="New group…" Command="{Binding PlacementTarget.Tag.NewGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                                                                     <MenuItem Header="Rename group…" Command="{Binding PlacementTarget.Tag.RenameGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}" />
                                                                     <MenuItem Header="Delete group…" Command="{Binding PlacementTarget.Tag.DeleteGroupCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}" />
+                                                                    <Separator />
+                                                                    <MenuItem Header="Discussion…" Command="{Binding PlacementTarget.Tag.OpenGroupDiscussionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding Name}" />
                                                                 </ContextMenu>
                                                             </Button.ContextMenu>
                                                             <Grid>
@@ -133,7 +136,27 @@
                                                                     </TextBlock.Text>
                                                                 </TextBlock>
                                                                 <TextBlock Grid.Column="1" Text="{Binding Name}" Style="{StaticResource MutedText}" FontWeight="SemiBold" />
-                                                                <TextBlock Grid.Column="2" Text="{Binding ItemCount}" Style="{StaticResource MutedText}" FontSize="11" Margin="6,0,4,0" />
+                                                                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                                    <!-- The group's discussion, when it has one; right-click › Discussion opens it. -->
+                                                                    <StackPanel Orientation="Horizontal" Margin="6,0,2,0" ToolTip="Comments in this group's discussion (right-click › Discussion)">
+                                                                        <StackPanel.Visibility>
+                                                                            <MultiBinding Converter="{StaticResource GroupCommentCount}">
+                                                                                <Binding Path="Name" />
+                                                                                <Binding Path="DataContext.GroupCommentCounts" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                            </MultiBinding>
+                                                                        </StackPanel.Visibility>
+                                                                        <TextBlock Style="{StaticResource Icon}" Text="&#xE8BD;" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,1,3,0" />
+                                                                        <TextBlock Style="{StaticResource MutedText}" FontSize="11">
+                                                                            <TextBlock.Text>
+                                                                                <MultiBinding Converter="{StaticResource GroupCommentCount}">
+                                                                                    <Binding Path="Name" />
+                                                                                    <Binding Path="DataContext.GroupCommentCounts" RelativeSource="{RelativeSource AncestorType=ListBox}" />
+                                                                                </MultiBinding>
+                                                                            </TextBlock.Text>
+                                                                        </TextBlock>
+                                                                    </StackPanel>
+                                                                    <TextBlock Text="{Binding ItemCount}" Style="{StaticResource MutedText}" FontSize="11" Margin="6,0,4,0" />
+                                                                </StackPanel>
                                                             </Grid>
                                                         </Button>
                                                         <ItemsPresenter>
@@ -208,8 +231,12 @@
 
         <ContentControl Grid.Column="2" Content="{Binding CurrentView}" Focusable="False" />
 
+        <!-- Discussion of an item, category or group, next to whatever is open. -->
+        <views:DiscussionPanel Grid.Column="3" Width="380" DataContext="{Binding Discussion}"
+                               Visibility="{Binding Converter={StaticResource EmptyToVis}}" />
+
         <!-- Update available -->
-        <Border Grid.Row="1" Grid.ColumnSpan="3" DataContext="{Binding Updates}" Padding="14,8"
+        <Border Grid.Row="1" Grid.ColumnSpan="4" DataContext="{Binding Updates}" Padding="14,8"
                 Background="{DynamicResource SystemFillColorAttentionBackgroundBrush}"
                 BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0"
                 Visibility="{Binding IsAvailable, Converter={StaticResource BoolToVis}}">
@@ -229,7 +256,7 @@
         </Border>
 
         <!-- Status bar -->
-        <Border Grid.Row="2" Grid.ColumnSpan="3" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,4">
+        <Border Grid.Row="2" Grid.ColumnSpan="4" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="12,4">
             <Grid>
                 <TextBlock Text="{Binding State.StatusText}" Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
                 <TextBlock Text="{Binding State.Store.DataRoot, StringFormat=Data: {0}}" Style="{StaticResource MutedText}" HorizontalAlignment="Right" />

@@ -65,6 +65,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         new("To do", ItemState.Todo),
         new("In progress", ItemState.InProgress),
         new("Done", ItemState.Done),
+        new("Needs review", ItemState.Done, ReviewOnly: true),
     ];
     public bool IsInbox => Project.IsInbox;
     public bool IsNotInbox => !Project.IsInbox;
@@ -72,6 +73,8 @@ public sealed partial class ProjectViewModel : ObservableObject
     /// <summary>Asks the view to focus an item's text box; caret -1 means end of text.</summary>
     public event Action<Guid, int>? FocusRequested;
     public event Action<CategoryViewModel>? FocusAddItemRequested;
+    /// <summary>Set by the board: the caret position in an item's text box, so agent edits can put it back.</summary>
+    public Func<Guid, int?>? CaretOf { get; set; }
 
     // ───────────── Details ─────────────
 
@@ -186,9 +189,12 @@ public sealed partial class ProjectViewModel : ObservableObject
         foreach (var c in Categories) c.RaiseShowDone();
     }
 
-    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null;
+    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null || WorkedBy != null;
 
     public void Touch() => _state.MarkDirty(Project);
+
+    /// <summary>How you sign notes, comments and history entries.</summary>
+    public string UserName => _state.UserName;
 
     /// <summary>True when every category is folded; the board's toggle then offers "Expand all".</summary>
     public bool AllCollapsed => Categories.Count > 0 && Categories.All(c => !c.IsExpanded);
@@ -231,14 +237,16 @@ public sealed partial class ProjectViewModel : ObservableObject
         var terms = (FilterText ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tag = TagFilter ?? AllTags;
         var state = StateFilter?.State;
+        var reviewOnly = StateFilter?.ReviewOnly == true;
 
-        bool StateOk(TodoItem item) => state == null || item.State == state;
+        bool StateOk(TodoItem item) => (state == null || item.State == state) && (!reviewOnly || item.NeedsReview);
 
         bool Matches(TodoItem item)
         {
             var tagOk = tag == AllTags || (tag == NoTag ? string.IsNullOrEmpty(item.Tag) : string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase));
             var text = item.SearchText();
-            return tagOk && StateOk(item) && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase));
+            return tagOk && StateOk(item) && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase)) &&
+                   (WorkedBy == null || item.Contributors().Any(c => string.Equals(c.Name, WorkedBy, StringComparison.OrdinalIgnoreCase)));
         }
 
         foreach (var category in Categories)
@@ -262,7 +270,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             var visible = new HashSet<TodoItem>();
             foreach (var item in matches.SelectMany(m => m.Descendants().Where(StateOk).Prepend(m)))
                 for (TodoItem? p = item; p != null && visible.Add(p); p = parents.GetValueOrDefault(p)) { }
-            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
+            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && WorkedBy == null && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
             foreach (var row in category.AllRows) row.IsVisible = nameMatches || visible.Contains(row.Item);
             category.IsVisible = nameMatches || visible.Count > 0;
             category.RaiseShowDone();
@@ -793,6 +801,42 @@ public sealed partial class ProjectViewModel : ObservableObject
         _state.StatusText = $"Removed {attachment.FileName} (Ctrl+Z brings it back).";
     }
 
+    public void BrowseNoteAttachments(NoteViewModel note)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Attach files to the note", Multiselect = true };
+        if (dialog.ShowDialog(Application.Current.MainWindow) == true) _ = AttachFilesToNote(note.Model, dialog.FileNames);
+    }
+
+    private async Task AttachFilesToNote(NoteDoc note, IReadOnlyList<string> paths)
+    {
+        List<Attachment> added;
+        try
+        {
+            added = await Task.Run(() => paths.Where(File.Exists).Select(_state.Store.ImportAttachment).ToList());
+        }
+        catch (Exception ex)
+        {
+            _state.StatusText = "Could not attach: " + ex.Message;
+            return;
+        }
+        if (added.Count == 0 || !Project.Notes.Contains(note)) return;
+        Checkpoint();
+        (note.Attachments ??= []).AddRange(added);
+        Touch();
+        Notes.FirstOrDefault(n => n.Model == note)?.Refresh();
+        _state.StatusText = added.Count == 1 ? $"Attached {added[0].FileName}." : $"Attached {added.Count} files.";
+    }
+
+    public void RemoveNoteAttachment(NoteDoc note, Attachment attachment)
+    {
+        Checkpoint();
+        note.Attachments?.Remove(attachment);
+        if (note.Attachments is { Count: 0 }) note.Attachments = null;
+        Touch();
+        Notes.FirstOrDefault(n => n.Model == note)?.Refresh();
+        _state.StatusText = $"Removed {attachment.FileName} (Ctrl+Z brings it back).";
+    }
+
     // Programs and scripts are shown in their folder instead of being run by a stray click.
     private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
         { ".exe", ".com", ".bat", ".cmd", ".msi", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".scr", ".lnk", ".url", ".reg", ".hta", ".cpl" };
@@ -817,6 +861,162 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (File.Exists(attachment.Path)) return true;
         _state.StatusText = $"{attachment.FileName} is missing from the data folder.";
         return false;
+    }
+
+    // ───────────── Review & agent edits ─────────────
+
+    public void AcceptReview(ItemRowViewModel row)
+    {
+        if (!row.Item.NeedsReview) return;
+        Mutate(() =>
+        {
+            row.Item.NeedsReview = false;
+            row.Item.AddActivity(_state.UserName, "Accepted the work.", agent: false);
+        }, [row.Category]);
+        _state.StatusText = $"Accepted “{Shorten(row.Item.Text)}”.";
+    }
+
+    /// <summary>Frees an item an agent left checked out: back to do, so any agent can pick it up.</summary>
+    public void ReleaseClaim(ItemRowViewModel row)
+    {
+        if (row.Item.ClaimedBy is not { } agent) return;
+        Mutate(() =>
+        {
+            row.Item.SetState(ItemState.Todo);
+            row.Item.AddActivity(_state.UserName, $"Released {agent}'s check-out.", agent: false);
+        }, [row.Category]);
+        _state.StatusText = $"Released “{Shorten(row.Item.Text)}”.";
+    }
+
+    /// <summary>
+    /// A change from outside the board (an AI agent, the discussion panel): one undo step, the affected categories
+    /// redrawn, and the cursor put back where it was if you were typing in the board (redrawn rows lose focus).
+    /// </summary>
+    private void MutateKeepingCursor(Action change, IEnumerable<CategoryViewModel?> affected, bool rebuildAll = false)
+    {
+        var focus = _focusedItemId;
+        var caret = focus is { } focused ? CaretOf?.Invoke(focused) : null;
+        Checkpoint();
+        change();
+        Touch();
+        if (rebuildAll) RebuildAll();
+        else foreach (var c in affected.OfType<CategoryViewModel>().Distinct()) c.Refresh();
+        RefreshTagFilters();
+        ApplyFilter();
+        if (focus is { } id && caret is { } at && Project.Find(id) != null) FocusRequested?.Invoke(id, at);
+    }
+
+    public void AgentEdit(Guid itemId, Action<TodoItem> change)
+    {
+        var loc = Project.Find(itemId) ?? throw new InvalidOperationException("The item is no longer in this project.");
+        MutateKeepingCursor(() => change(loc.Item), [CategoryFor(loc.Category)]);
+    }
+
+    /// <summary>Adds an item under a parent item, or at the end of a category (created when missing).</summary>
+    public void AgentAdd(TodoItem item, string? categoryName, Guid? parentId)
+    {
+        if (parentId is { } pid)
+        {
+            var parent = Project.Find(pid) ?? throw new InvalidOperationException("The parent item is not in this project.");
+            MutateKeepingCursor(() => parent.Item.Children.Add(item), [CategoryFor(parent.Category)]);
+            return;
+        }
+        var category = Project.FindCategory(categoryName ?? "");
+        if (category != null)
+        {
+            MutateKeepingCursor(() => category.Items.Add(item), [CategoryFor(category)]);
+            return;
+        }
+        MutateKeepingCursor(() => Project.Categories.Add(new Category { Name = categoryName!.Trim(), Items = [item] }), [], rebuildAll: true);
+    }
+
+    // ───────────── Discussions ─────────────
+
+    /// <summary>Opens the discussion of an item or category of this project in the side panel.</summary>
+    public void OpenDiscussion(Guid targetId) => Main.OpenDiscussion(DiscussionTarget.InProject(Project, targetId));
+
+    /// <summary>The threads of an item or a category of this project; null when it has none or is gone.</summary>
+    public List<Comment>? CommentsOf(Guid targetId) =>
+        Project.Find(targetId)?.Item.Comments ?? Project.Categories.FirstOrDefault(c => c.Id == targetId)?.Comments;
+
+    public bool HasDiscussionTarget(Guid targetId) => Project.Find(targetId) != null || Project.Categories.Any(c => c.Id == targetId);
+
+    /// <summary>Posts on an item or category (a new thread or a reply); one undo step.</summary>
+    public void PostComment(Guid targetId, Comment comment, Guid? replyTo)
+    {
+        if (replyTo is { } parent && CommentsOf(targetId).Find(parent) == null)
+            throw new InvalidOperationException("The comment to reply to isn't there any more.");
+        if (Project.Find(targetId) is { } loc)
+            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Post(loc.Item.Comments, comment, replyTo), [CategoryFor(loc.Category)]);
+        else if (Project.Categories.FirstOrDefault(c => c.Id == targetId) is { } category)
+            MutateKeepingCursor(() => category.Comments = Discussions.Post(category.Comments, comment, replyTo), [CategoryFor(category)]);
+        else
+            throw new InvalidOperationException("The item or category isn't there any more.");
+    }
+
+    public void RemoveComment(Guid targetId, Guid commentId)
+    {
+        if (Project.Find(targetId) is { } loc)
+            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Remove(loc.Item.Comments, commentId), [CategoryFor(loc.Category)]);
+        else if (Project.Categories.FirstOrDefault(c => c.Id == targetId) is { } category)
+            MutateKeepingCursor(() => category.Comments = Discussions.Remove(category.Comments, commentId), [CategoryFor(category)]);
+    }
+
+    // ───────────── Worked on by ─────────────
+
+    /// <summary>Shows only items this person or agent worked on (history or discussion); null shows everyone's.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWorkedByActive))]
+    private string? _workedBy;
+
+    partial void OnWorkedByChanged(string? value) => ApplyFilter();
+
+    public bool IsWorkedByActive => WorkedBy != null;
+
+    /// <summary>Everyone who worked on something in this project, for the filter bar's picker.</summary>
+    public IReadOnlyList<string> WorkedByChoices => Project.Walk().SelectMany(l => l.Item.Contributors()).Select(c => c.Name)
+        .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase).ToList();
+
+    [RelayCommand]
+    private void ShowWorkedBy(string? name)
+    {
+        OnPropertyChanged(nameof(WorkedByChoices));
+        WorkedBy = string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
+    [RelayCommand] private void ClearWorkedBy() => WorkedBy = null;
+
+    /// <summary>Creates the note with this title or replaces (or appends to) its text.</summary>
+    public NoteDoc AgentWriteDoc(string title, string text, bool append, List<Attachment> files, string by, out bool created)
+    {
+        var note = Project.Notes.FirstOrDefault(n => string.Equals(n.Title.Trim(), title.Trim(), StringComparison.OrdinalIgnoreCase));
+        created = note == null;
+        var selected = SelectedNote?.Model;
+        Checkpoint();
+        if (note == null)
+        {
+            note = new NoteDoc { Title = title.Trim() };
+            Project.Notes.Add(note);
+        }
+        note.Text = append && note.Text.Trim().Length > 0 ? note.Text.TrimEnd() + "\n\n" + text : text;
+        note.UpdatedAt = DateTime.Now;
+        note.UpdatedBy = by;
+        if (files.Count > 0) (note.Attachments ??= []).AddRange(files);
+        Touch();
+        ReloadSideLists();
+        SelectedNote = Notes.FirstOrDefault(n => n.Model == (selected ?? note)) ?? Notes.FirstOrDefault();
+        return note;
+    }
+
+    public Release AgentSaveRelease(string version, string? title, List<PatchNoteEntry> entries, string markdown, string by)
+    {
+        Checkpoint();
+        var release = PatchNotesBuilder.CreateRelease(Project, version, DateTime.Now, title, entries, markdown);
+        release.CreatedBy = by;
+        Touch();
+        ReloadSideLists();
+        RebuildAll();
+        return release;
     }
 
     // ───────────── Repo links ─────────────
@@ -963,6 +1163,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         FilterText = "";
         TagFilter = AllTags;
         StateFilter = StateFilters[0];
+        WorkedBy = null;
         if (Project.Find(item.Id) is not { } loc || CategoryFor(loc.Category) is not { } category) return;
         category.IsExpanded = true;
         if (loc.Item.IsDone || Project.Walk().Any(l => l.Depth == 0 && l.Item.IsDone && l.Item.Descendants().Contains(item)))
@@ -985,14 +1186,33 @@ public sealed partial class ProjectViewModel : ObservableObject
 }
 
 /// <summary>A choice in the board's state filter; State is null for "All states".</summary>
-public sealed record StateFilterOption(string Label, ItemState? State)
+public sealed record StateFilterOption(string Label, ItemState? State, bool ReviewOnly = false)
 {
     public override string ToString() => Label;
 }
 
-public sealed class NoteViewModel(ProjectViewModel owner, NoteDoc model) : ObservableObject
+public sealed partial class NoteViewModel(ProjectViewModel owner, NoteDoc model) : ObservableObject
 {
+    private IReadOnlyList<AttachmentViewModel>? _attachments;
+
     public NoteDoc Model { get; } = model;
+
+    public IReadOnlyList<AttachmentViewModel> Attachments => _attachments ??=
+        (Model.Attachments ?? []).Select(a => new AttachmentViewModel(owner, a, () => owner.RemoveNoteAttachment(Model, a))).ToList();
+    public bool HasAttachments => Model.Attachments is { Count: > 0 };
+
+    public void Refresh()
+    {
+        _attachments = null;
+        OnPropertyChanged(string.Empty);
+    }
+
+    [RelayCommand] private void Attach() => owner.BrowseNoteAttachments(this);
+
+    /// <summary>"Last changed 14:02 by Claude Code"; empty for notes from before notes were signed.</summary>
+    public string? EditedText => Model.UpdatedBy is { } by
+        ? $"Last changed {Model.UpdatedAt.ToString(Model.UpdatedAt.Date == DateTime.Today ? "HH:mm" : "d MMM yyyy HH:mm", System.Globalization.CultureInfo.CurrentCulture)} by {by}"
+        : null;
 
     public string Title
     {
@@ -1001,8 +1221,7 @@ public sealed class NoteViewModel(ProjectViewModel owner, NoteDoc model) : Obser
         {
             if (value == Model.Title) return;
             Model.Title = value;
-            Model.UpdatedAt = DateTime.Now;
-            owner.Touch();
+            Signed();
             OnPropertyChanged();
         }
     }
@@ -1014,9 +1233,16 @@ public sealed class NoteViewModel(ProjectViewModel owner, NoteDoc model) : Obser
         {
             if (value == Model.Text) return;
             Model.Text = value;
-            Model.UpdatedAt = DateTime.Now;
-            owner.Touch();
+            Signed();
             OnPropertyChanged();
         }
+    }
+
+    private void Signed()
+    {
+        Model.UpdatedAt = DateTime.Now;
+        Model.UpdatedBy = owner.UserName;
+        owner.Touch();
+        OnPropertyChanged(nameof(EditedText));
     }
 }

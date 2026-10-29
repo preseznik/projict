@@ -1,0 +1,203 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace ProJict.Core.Agents;
+
+/// <summary>A tool offered to AI agents; read-only tools are marked so clients can allow them without asking.</summary>
+public sealed record McpTool(string Name, string Title, string Description, JsonObject InputSchema, bool ReadOnly);
+
+/// <summary>One connected agent.</summary>
+public sealed class McpSession
+{
+    private static int _next;
+
+    public int Id { get; } = Interlocked.Increment(ref _next);
+    public string? ClientName { get; set; }
+    public string? ClientTitle { get; set; }
+    /// <summary>The agent's working directory, passed on by the ProJict bridge.</summary>
+    public string? WorkingDirectory { get; set; }
+    /// <summary>Items this agent has checked out (claimed) in this session.</summary>
+    public HashSet<Guid> Claimed { get; } = [];
+    /// <summary>Set by the agent (set_label) so parallel sessions of the same client can be told apart.</summary>
+    public string? Label { get; set; }
+
+    /// <summary>How the agent signs its work: "Claude Code" for a client named "claude-code", plus its label if it set one.</summary>
+    public string AgentName => string.IsNullOrWhiteSpace(Label) ? ClientDisplayName : $"{ClientDisplayName} · {Label.Trim()}";
+
+    private string ClientDisplayName => !string.IsNullOrWhiteSpace(ClientTitle) ? ClientTitle.Trim()
+        : !string.IsNullOrWhiteSpace(ClientName) ? Prettify(ClientName) : "AI agent";
+
+    private static string Prettify(string name) => name.Contains(' ') ? name.Trim() :
+        string.Join(" ", name.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
+}
+
+public interface IMcpToolHost
+{
+    IReadOnlyList<McpTool> Tools { get; }
+    /// <summary>Sent to the agent when it connects: what ProJict is and how to use the tools.</summary>
+    string Instructions { get; }
+    void SessionStarted(McpSession session);
+    /// <summary>The agent disconnected (also called when it never got as far as initializing).</summary>
+    void SessionEnded(McpSession session);
+    /// <summary>Runs a tool; throws <see cref="McpToolException"/> for problems the agent should read and fix.</summary>
+    Task<string> CallAsync(McpSession session, string name, JsonElement arguments);
+}
+
+/// <summary>A tool failed in a way the agent can act on (unknown item, missing argument, …).</summary>
+public sealed class McpToolException(string message) : Exception(message);
+
+/// <summary>
+/// The part of the Model Context Protocol ProJict needs: JSON-RPC 2.0 messages, one per line (the stdio transport),
+/// with initialize, ping, tools/list and tools/call. Requests are answered in order.
+/// </summary>
+public static class McpServer
+{
+    /// <summary>Protocol versions this server can speak; it answers with the client's if listed, else the first stable one below.</summary>
+    public static readonly string[] SupportedVersions = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+    private const string FallbackVersion = "2025-06-18";
+
+    /// <summary>First line the bridge sends (not JSON-RPC): <c>{"projictBridge":1,"cwd":"…"}</c>.</summary>
+    public const string BridgeHelloKey = "projictBridge";
+
+    public static async Task RunAsync(Stream input, Stream output, IMcpToolHost host, McpSession session, string serverVersion,
+        CancellationToken cancellation = default)
+    {
+        using var reader = new StreamReader(input, new UTF8Encoding(false), false, 4096, leaveOpen: true);
+        try
+        {
+            while (await reader.ReadLineAsync(cancellation) is { } read)
+            {
+                // Some clients start their stream with a byte order mark.
+                var line = read.TrimStart('﻿');
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                var response = await HandleAsync(line, host, session, serverVersion);
+                if (response == null) continue;
+                await output.WriteAsync(Encoding.UTF8.GetBytes(response.ToJsonString() + "\n"), cancellation);
+                await output.FlushAsync(cancellation);
+            }
+        }
+        finally
+        {
+            host.SessionEnded(session);
+        }
+    }
+
+    /// <summary>Handles one message; null when nothing is sent back (notifications, the bridge's hello).</summary>
+    public static async Task<JsonObject?> HandleAsync(string line, IMcpToolHost host, McpSession session, string serverVersion)
+    {
+        JsonNode? node;
+        try { node = JsonNode.Parse(line); }
+        catch (JsonException) { return Error(null, -32700, "Parse error"); }
+        if (node is not JsonObject message) return Error(null, -32600, "Invalid request: expected a JSON object");
+
+        if (message.ContainsKey(BridgeHelloKey))
+        {
+            session.WorkingDirectory = Text(message["cwd"]);
+            return null;
+        }
+
+        var isNotification = !message.ContainsKey("id");
+        var id = message["id"]?.DeepClone();
+        var method = Text(message["method"]);
+        // ProJict never sends requests, so a message without a method is a stray response; ignore it.
+        if (method == null) return null;
+
+        try
+        {
+            var parameters = message["params"] as JsonObject;
+            JsonNode? result = method switch
+            {
+                "initialize" => Initialize(parameters, host, session, serverVersion),
+                "ping" => new JsonObject(),
+                "tools/list" => ListTools(host),
+                "tools/call" => await CallToolAsync(parameters, host, session),
+                _ when method.StartsWith("notifications/", StringComparison.Ordinal) => null,
+                _ => throw new ProtocolError(-32601, $"Method not found: {method}"),
+            };
+            return isNotification ? null : new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["result"] = result ?? new JsonObject() };
+        }
+        catch (ProtocolError error)
+        {
+            return isNotification ? null : Error(id, error.Code, error.Message);
+        }
+    }
+
+    private static JsonObject Initialize(JsonObject? parameters, IMcpToolHost host, McpSession session, string serverVersion)
+    {
+        var requested = Text(parameters?["protocolVersion"]);
+        if (parameters?["clientInfo"] is JsonObject client)
+        {
+            session.ClientName = Text(client["name"]);
+            session.ClientTitle = Text(client["title"]);
+        }
+        host.SessionStarted(session);
+        return new JsonObject
+        {
+            ["protocolVersion"] = requested != null && SupportedVersions.Contains(requested) ? requested : FallbackVersion,
+            ["capabilities"] = new JsonObject { ["tools"] = new JsonObject { ["listChanged"] = false } },
+            ["serverInfo"] = new JsonObject { ["name"] = "projict", ["title"] = "ProJict", ["version"] = serverVersion },
+            ["instructions"] = host.Instructions,
+        };
+    }
+
+    private static JsonObject ListTools(IMcpToolHost host) => new()
+    {
+        ["tools"] = new JsonArray(host.Tools.Select(t => (JsonNode)new JsonObject
+        {
+            ["name"] = t.Name,
+            ["title"] = t.Title,
+            ["description"] = t.Description,
+            ["inputSchema"] = t.InputSchema.DeepClone(),
+            ["annotations"] = new JsonObject
+            {
+                ["title"] = t.Title,
+                ["readOnlyHint"] = t.ReadOnly,
+                ["destructiveHint"] = false,
+                ["openWorldHint"] = false,
+            },
+        }).ToArray()),
+    };
+
+    private static async Task<JsonObject> CallToolAsync(JsonObject? parameters, IMcpToolHost host, McpSession session)
+    {
+        var name = Text(parameters?["name"]) ?? throw new ProtocolError(-32602, "Missing tool name");
+        if (host.Tools.All(t => t.Name != name)) throw new ProtocolError(-32602, $"Unknown tool: {name}");
+        var arguments = parameters?["arguments"] is JsonObject args
+            ? JsonSerializer.SerializeToElement(args)
+            : JsonSerializer.SerializeToElement(new JsonObject());
+        string text;
+        var isError = false;
+        try
+        {
+            text = await host.CallAsync(session, name, arguments);
+        }
+        catch (McpToolException ex)
+        {
+            (text, isError) = (ex.Message, true);
+        }
+        catch (Exception ex)
+        {
+            (text, isError) = ($"ProJict could not run {name}: {ex.Message}", true);
+        }
+        return new JsonObject
+        {
+            ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
+            ["isError"] = isError,
+        };
+    }
+
+    private static JsonObject Error(JsonNode? id, int code, string message) => new()
+    {
+        ["jsonrpc"] = "2.0",
+        ["id"] = id,
+        ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
+    };
+
+    private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var s) ? s : null;
+
+    private sealed class ProtocolError(int code, string message) : Exception(message)
+    {
+        public int Code { get; } = code;
+    }
+}

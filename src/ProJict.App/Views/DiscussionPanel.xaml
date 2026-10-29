@@ -1,0 +1,101 @@
+<UserControl x:Class="ProJict.App.Views.DiscussionPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:ProJict.App.ViewModels">
+    <UserControl.Resources>
+        <!-- A comment with its replies nested below; replies use this same template, so threads go as deep as people answer. -->
+        <DataTemplate DataType="{x:Type vm:CommentViewModel}">
+            <StackPanel Margin="0,8,0,0">
+                <Border x:Name="Body" Background="Transparent" CornerRadius="4" Padding="0,2">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="Glyph" Style="{StaticResource Icon}" Text="{Binding Glyph}" FontSize="12" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip="{Binding WhenToolTip}">
+                                <Run Text="{Binding By, Mode=OneWay}" FontWeight="SemiBold" /><Run Text="   " /><Run Text="{Binding WhenText, Mode=OneWay}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </TextBlock>
+                            <StackPanel x:Name="Actions" Grid.Column="2" Orientation="Horizontal" Opacity="0">
+                                <Button Style="{StaticResource SubtleIconButton}" FontSize="12" Padding="5,3" Content="&#xE97A;" ToolTip="Reply"
+                                        AutomationProperties.Name="Reply" Command="{Binding ReplyCommand}" />
+                                <Button Style="{StaticResource SubtleIconButton}" FontSize="12" Padding="5,3" Content="&#xE74D;" ToolTip="Delete"
+                                        AutomationProperties.Name="Delete comment" Command="{Binding DeleteCommand}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="Text" Text="{Binding Text}" TextWrapping="Wrap" Margin="18,2,4,0" />
+                        <StackPanel Margin="18,6,0,0" Visibility="{Binding IsReplying, Converter={StaticResource BoolToVis}}">
+                            <TextBox Text="{Binding ReplyText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="54" MaxHeight="160" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Reply"
+                                     IsVisibleChanged="ReplyBox_IsVisibleChanged" PreviewKeyDown="ReplyBox_PreviewKeyDown" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                <Button Style="{StaticResource SubtleButton}" Content="Cancel" Command="{Binding CancelReplyCommand}" />
+                                <Button Style="{StaticResource AccentButtonStyle}" Content="Reply" Command="{Binding SendReplyCommand}" Margin="6,0,0,0"
+                                        ToolTip="Ctrl+Enter" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+                <Border Margin="5,2,0,0" Padding="12,0,0,0" BorderThickness="2,0,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                        Visibility="{Binding HasReplies, Converter={StaticResource BoolToVis}}">
+                    <ItemsControl ItemsSource="{Binding Replies}" Focusable="False" />
+                </Border>
+            </StackPanel>
+            <DataTemplate.Triggers>
+                <Trigger SourceName="Body" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Actions" Property="Opacity" Value="1" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsAgent}" Value="True">
+                    <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsDeleted}" Value="True">
+                    <Setter TargetName="Text" Property="FontStyle" Value="Italic" />
+                    <Setter TargetName="Text" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource LayerFillColorDefaultBrush}" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" BorderThickness="1,0,0,0">
+        <DockPanel Margin="16,14,12,12">
+            <DockPanel DockPanel.Dock="Top">
+                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE711;" FontSize="12" VerticalAlignment="Top"
+                        ToolTip="Close" AutomationProperties.Name="Close discussion" Command="{Binding CloseCommand}" />
+                <StackPanel>
+                    <TextBlock Style="{StaticResource MutedText}" FontSize="11">
+                        <Run Text="{Binding KindText, Mode=OneWay}" /><Run Text=" discussion" />
+                    </TextBlock>
+                    <TextBlock Text="{Binding Subject}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" MaxHeight="62" TextTrimming="WordEllipsis" Margin="0,2,0,0" />
+                    <TextBlock Text="{Binding Location}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </DockPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+                <Grid>
+                    <TextBox x:Name="NewThread" Text="{Binding NewText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
+                             MinHeight="64" MaxHeight="180" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="New comment"
+                             IsEnabled="{Binding IsGone, Converter={StaticResource InvBool}}" PreviewKeyDown="NewThread_PreviewKeyDown" />
+                    <TextBlock Text="Start a new thread…" Style="{StaticResource MutedText}" IsHitTestVisible="False" Margin="11,7,0,0" VerticalAlignment="Top"
+                               Visibility="{Binding NewText, Converter={StaticResource InvEmptyToVis}}" />
+                </Grid>
+                <DockPanel Margin="0,6,0,0">
+                    <Button DockPanel.Dock="Right" Content="Post" Style="{StaticResource AccentButtonStyle}" MinWidth="80" Command="{Binding PostCommand}" ToolTip="Ctrl+Enter" />
+                    <TextBlock Text="{Binding SignedAs}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+            </StackPanel>
+
+            <TextBlock DockPanel.Dock="Top" Text="This was removed, and its discussion with it." Style="{StaticResource MutedText}" TextWrapping="Wrap" Margin="0,12,0,0"
+                       Visibility="{Binding IsGone, Converter={StaticResource BoolToVis}}" />
+            <Grid Margin="0,6,0,0">
+                <TextBlock Text="No comments yet. Start a thread below; AI agents working on this project can read it and answer." Style="{StaticResource MutedText}"
+                           TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,8,0,0" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
+                <ScrollViewer x:Name="ThreadScroll" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding Threads}" Focusable="False" Margin="0,0,4,8" />
+                </ScrollViewer>
+            </Grid>
+        </DockPanel>
+    </Border>
+</UserControl>

@@ -22,6 +22,15 @@ public sealed class TodoItem
     public bool Imported { get; set; }
     /// <summary>Files attached to the item; null (and left out of the JSON) while there are none.</summary>
     public List<Attachment>? Attachments { get; set; }
+    /// <summary>The AI agent working on the item while it is in progress; any state change clears it.</summary>
+    public string? ClaimedBy { get; set; }
+    /// <summary>Finished by an AI agent and not checked by you yet; any state change clears it.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool NeedsReview { get; set; }
+    /// <summary>What happened to the item (a claim, a resolution, a review), signed by who did it; null while empty.</summary>
+    public List<ActivityEntry>? Activity { get; set; }
+    /// <summary>Discussion threads about the item; null while there are none.</summary>
+    public List<Comment>? Comments { get; set; }
 
     [JsonIgnore] public bool IsDone => State == ItemState.Done;
     [JsonIgnore] public bool HasAttachments => Attachments is { Count: > 0 };
@@ -32,6 +41,8 @@ public sealed class TodoItem
         State = state;
         DoneAt = state == ItemState.Done ? DateTime.Now : null;
         if (state != ItemState.Done) ReleaseId = null;
+        ClaimedBy = null;
+        NeedsReview = false;
         // From now on the dates are real, not taken from an imported file.
         Imported = false;
     }
@@ -41,6 +52,44 @@ public sealed class TodoItem
         var copy = (TodoItem)MemberwiseClone();
         copy.Children = Children.Select(c => c.DeepClone()).ToList();
         copy.Attachments = Attachments?.ToList();
+        copy.Activity = Activity?.ToList();
+        copy.Comments = Comments?.Select(c => c.DeepClone()).ToList();
+        return copy;
+    }
+
+    public void AddActivity(string by, string text, bool agent) =>
+        (Activity ??= []).Add(new ActivityEntry { By = by, Text = text, Agent = agent });
+}
+
+/// <summary>One line in an item's history, e.g. an agent's resolution: "Fixed in 615d691".</summary>
+public sealed class ActivityEntry
+{
+    public DateTime At { get; set; } = DateTime.Now;
+    public string By { get; set; } = "";
+    /// <summary>Written by an AI agent rather than a person.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Agent { get; set; }
+    public string Text { get; set; } = "";
+}
+
+/// <summary>A message in a discussion; replies nest to any depth (sub-threads).</summary>
+public sealed class Comment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string By { get; set; } = "";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Agent { get; set; }
+    public DateTime At { get; set; } = DateTime.Now;
+    public string Text { get; set; } = "";
+    /// <summary>Removed while it had replies: the text is gone, the thread below it stays.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Deleted { get; set; }
+    public List<Comment>? Replies { get; set; }
+
+    public Comment DeepClone()
+    {
+        var copy = (Comment)MemberwiseClone();
+        copy.Replies = Replies?.Select(r => r.DeepClone()).ToList();
         return copy;
     }
 }
@@ -67,6 +116,8 @@ public sealed class Category
     public string? Description { get; set; }
     public bool Collapsed { get; set; }
     public List<TodoItem> Items { get; set; } = [];
+    /// <summary>Discussion threads about the category; null while there are none.</summary>
+    public List<Comment>? Comments { get; set; }
 }
 
 public sealed class NoteDoc
@@ -75,6 +126,10 @@ public sealed class NoteDoc
     public string Title { get; set; } = "Note";
     public string Text { get; set; } = "";
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    /// <summary>Who last changed the note: you or an AI agent.</summary>
+    public string? UpdatedBy { get; set; }
+    /// <summary>Files that go with the note (charts, PDFs, screenshots); null while there are none.</summary>
+    public List<Attachment>? Attachments { get; set; }
 }
 
 public sealed class Release
@@ -85,6 +140,8 @@ public sealed class Release
     public string? Title { get; set; }
     public List<Guid> ItemIds { get; set; } = [];
     public string Markdown { get; set; } = "";
+    /// <summary>Who recorded the release: you or an AI agent.</summary>
+    public string? CreatedBy { get; set; }
     /// <summary>Marks everything done before import, so later patch notes only contain new work.</summary>
     public bool IsBaseline { get; set; }
 }

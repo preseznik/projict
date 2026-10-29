@@ -3,8 +3,19 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Settings" Width="640" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
-    <StackPanel Margin="22,16">
-        <TextBlock Text="Settings" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+    <DockPanel Margin="22,16">
+        <TextBlock DockPanel.Dock="Top" Text="Settings" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,4" />
+        <StackPanel DockPanel.Dock="Bottom">
+            <TextBlock x:Name="Error" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button Content="Open data folder" MinWidth="120" Click="OpenData_Click" />
+                <Button Content="Save" Style="{StaticResource AccentButtonStyle}" IsDefault="True" MinWidth="100" Margin="8,0,0,0" Click="Save_Click" />
+                <Button Content="Cancel" IsCancel="True" MinWidth="90" Margin="8,0,0,0" />
+            </StackPanel>
+        </StackPanel>
+        <!-- The sections scroll when the screen is too short for all of them; Save and Cancel stay in view. -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+        <StackPanel>
 
         <TextBlock Text="Data" Style="{StaticResource SectionTitle}" />
         <DockPanel>
@@ -82,6 +93,24 @@
         <CheckBox x:Name="UseGitHubCli" Content="Use my GitHub CLI (gh) sign-in, so private repositories are included" Margin="0,8,0,0" />
         <TextBlock x:Name="ReleasesResult" Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="2,6,0,0" />
 
+        <TextBlock Text="AI agents &amp; comments" Style="{StaticResource SectionTitle}" />
+        <Grid Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Your name" VerticalAlignment="Center" />
+            <TextBox x:Name="UserName" Grid.Column="1" Width="220" HorizontalAlignment="Left"
+                     ToolTip="How you sign comments, notes and history entries. Empty uses your Windows user name." />
+        </Grid>
+        <CheckBox x:Name="AllowAgents" Content="Let AI agents (Claude Code and other MCP clients) work in ProJict" />
+        <DockPanel Margin="0,8,0,0">
+            <Button DockPanel.Dock="Right" Content="Copy" MinWidth="70" Margin="8,0,0,0" Click="CopyMcpCommand_Click" />
+            <TextBox x:Name="McpCommand" IsReadOnly="True" FontFamily="{StaticResource MonoFont}" FontSize="12" />
+        </DockPanel>
+        <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
+                   Text="Run this once in a terminal to add ProJict to Claude Code. Agents can claim and complete items, add items, attach files and write notes, but never delete anything; what they finish waits for your review, and Ctrl+Z undoes their changes." />
+
         <TextBlock Text="Updates" Style="{StaticResource SectionTitle}" />
         <CheckBox x:Name="CheckUpdates" Content="Check for updates when ProJict starts" />
         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
@@ -105,12 +134,7 @@
             </DockPanel>
         </Border>
         <TextBlock x:Name="VersionText" Style="{StaticResource MutedText}" Margin="2,8,0,0" />
-
-        <TextBlock x:Name="Error" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button Content="Open data folder" MinWidth="120" Click="OpenData_Click" />
-            <Button Content="Save" Style="{StaticResource AccentButtonStyle}" IsDefault="True" MinWidth="100" Margin="8,0,0,0" Click="Save_Click" />
-            <Button Content="Cancel" IsCancel="True" MinWidth="90" Margin="8,0,0,0" />
         </StackPanel>
-    </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
 </Window>

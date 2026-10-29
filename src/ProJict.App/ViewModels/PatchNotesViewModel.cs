@@ -123,7 +123,7 @@ public sealed partial class PatchNotesViewModel : ObservableObject
         }
         _owner.Checkpoint();
         var markdown = PatchNotesBuilder.Build(_owner.Project, Version, Date, Title, entries, markdown: true);
-        PatchNotesBuilder.CreateRelease(_owner.Project, Version, Date, Title, entries, markdown);
+        PatchNotesBuilder.CreateRelease(_owner.Project, Version, Date, Title, entries, markdown).CreatedBy = _state.UserName;
         _owner.Touch();
         _state.StatusText = $"Release {Version} recorded with {entries.Count} item(s).";
         return true;

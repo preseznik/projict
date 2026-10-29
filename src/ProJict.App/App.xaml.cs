@@ -14,6 +14,7 @@ public partial class App : Application
     private SingleInstance? _single;
     private TrayService? _tray;
     private HotkeyService? _hotkey;
+    private AgentPipeServer? _agents;
     private QuickCaptureWindow? _capture;
 
     public static new App Current => (App)Application.Current;
@@ -24,6 +25,12 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        if (HasFlag(e.Args, "--mcp"))
+        {
+            RunBridge(e.Args);
+            return;
+        }
 
         var dataArg = ArgValue(e.Args, "--data");
         var appSettings = AppSettings.Load();
@@ -73,16 +80,49 @@ public partial class App : Application
         _hotkey.Pressed += ShowQuickCapture;
         RegisterHotkey(State.Settings.Hotkey, out _);
 
-        main.Show();
+        _agents = new AgentPipeServer(AgentPipeServer.PipeName(dataRoot), new AgentTools(State, MainVm, Dispatcher), UpdateService.CurrentVersionText);
+        if (appSettings.AllowAgents) _agents.Start();
+
+        // Started for an AI agent (by the --mcp bridge): stay in the tray until the user opens the window.
+        var background = HasFlag(e.Args, "--background");
+        if (!background) main.Show();
 
         if (State.Store.LoadErrors.Count > 0)
-            MessageBox.Show(main, "Some files could not be loaded and were left untouched:\n\n" + string.Join("\n", State.Store.LoadErrors),
-                "ProJict", MessageBoxButton.OK, MessageBoxImage.Warning);
+        {
+            var text = "Some files could not be loaded and were left untouched:\n\n" + string.Join("\n", State.Store.LoadErrors);
+            if (background) State.StatusText = text.Replace("\n\n", " ").Replace('\n', ' ');
+            else MessageBox.Show(main, text, "ProJict", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
 
         if (appSettings.CheckForUpdates)
             _ = MainVm.Updates.CheckAsync(manual: false);
         if (MainVm.GitHub.HasWork)
             _ = MainVm.GitHub.RefreshAsync(force: false);
+    }
+
+    /// <summary>
+    /// Bridge mode for MCP clients: no window and no single-instance lock; relays stdin/stdout to the running ProJict
+    /// for the same data folder until either side closes.
+    /// </summary>
+    private void RunBridge(string[] args)
+    {
+        var dataArg = ArgValue(args, "--data");
+        var dataRoot = Path.GetFullPath(dataArg ?? AppSettings.Load().DataRoot ?? AppSettings.DefaultDataRoot());
+        var launch = !HasFlag(args, "--no-launch");
+        Task.Run(async () =>
+        {
+            int code;
+            try { code = await McpBridge.RunAsync(dataRoot, launch, dataArg != null ? dataRoot : null); }
+            catch (Exception) { code = 1; }
+            await Dispatcher.InvokeAsync(() => Shutdown(code));
+        });
+    }
+
+    /// <summary>Turns agent access on or off right away (Settings › AI agents).</summary>
+    public void SetAgentAccess(bool allowed)
+    {
+        if (allowed) _agents?.Start();
+        else _agents?.Stop();
     }
 
     public bool RegisterHotkey(string gesture, out string? error)
@@ -168,6 +208,7 @@ public partial class App : Application
         try { State?.SaveNow(); }
         catch (Exception) { }
         State?.SaveAppSettings();
+        _agents?.Dispose();
         _hotkey?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();
@@ -185,6 +226,8 @@ public partial class App : Application
         catch (Exception) { }
         MessageBox.Show(e.Exception.Message, "ProJict — unexpected error", MessageBoxButton.OK, MessageBoxImage.Error);
     }
+
+    private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
     private static string? ArgValue(string[] args, string name)
     {

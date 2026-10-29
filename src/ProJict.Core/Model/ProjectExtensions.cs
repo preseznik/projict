@@ -90,6 +90,7 @@ public static class ProjectExtensions
     public static string SearchText(this TodoItem item) =>
         item.HasAttachments ? $"{item.DisplayText()} {string.Join(" ", item.Attachments!.Select(a => a.FileName))}" : item.DisplayText();
 
+    /// <summary>Files attached to the project's items and notes.</summary>
     public static IEnumerable<Attachment> Attachments(this Project project) =>
-        project.Walk().SelectMany(l => l.Item.Attachments ?? []);
+        project.Walk().SelectMany(l => l.Item.Attachments ?? []).Concat(project.Notes.SelectMany(n => n.Attachments ?? []));
 }

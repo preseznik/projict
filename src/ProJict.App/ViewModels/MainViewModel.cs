@@ -100,6 +100,16 @@ public sealed partial class MainViewModel : ObservableObject
         {
             if (p.IsInbox) OnPropertyChanged(nameof(InboxCount));
             ProjectItems.FirstOrDefault(i => i.Project == p)?.Refresh();
+            // While the dashboard shows, changes come from elsewhere (an AI agent, quick capture); keep it current.
+            if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+            if (Discussion is { } open && open.Target.ProjectId == p.Id) open.Sync();
+        };
+        state.GroupCommentsChanged += group =>
+        {
+            OnPropertyChanged(nameof(GroupCommentCounts));
+            if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+            if (Discussion is { Target.Kind: DiscussionKind.Group } open && string.Equals(open.Target.Group, group, StringComparison.OrdinalIgnoreCase))
+                open.Sync();
         };
 
         var last = state.AppSettings.LastProjectId is { } id ? state.Projects.FirstOrDefault(p => p.Id == id) : null;
@@ -193,6 +203,25 @@ public sealed partial class MainViewModel : ObservableObject
         State.MarkSettingsDirty();
         OnPropertyChanged(nameof(CollapsedGroups));
     }
+
+    // ───────────── Discussions ─────────────
+
+    /// <summary>The discussion shown in the side panel; null while it is closed.</summary>
+    [ObservableProperty] private DiscussionViewModel? _discussion;
+
+    public void OpenDiscussion(DiscussionTarget target) => Discussion = new DiscussionViewModel(this, State, target);
+
+    public void CloseDiscussion() => Discussion = null;
+
+    [RelayCommand]
+    private void OpenGroupDiscussion(string? group)
+    {
+        if (!string.IsNullOrWhiteSpace(group)) OpenDiscussion(DiscussionTarget.ForGroup(group));
+    }
+
+    /// <summary>Comments per group name, for the sidebar headings.</summary>
+    public IReadOnlyDictionary<string, int> GroupCommentCounts =>
+        (State.Settings.GroupComments ?? []).ToDictionary(kv => kv.Key, kv => kv.Value.CountComments(), StringComparer.OrdinalIgnoreCase);
 
     public ProjectViewModel GetProjectViewModel(Project project)
     {
@@ -333,6 +362,8 @@ public sealed partial class MainViewModel : ObservableObject
             MessageBox.Show(Application.Current.MainWindow!, error, "Rename group", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         ApplyGroupChange(GroupOperations.Rename(State.Workspace, group!, name));
+        if (Discussion is { Target.Kind: DiscussionKind.Group } open && ProjectGroups.Same(open.Target.Group, group))
+            OpenDiscussion(DiscussionTarget.ForGroup(name));
         State.StatusText = $"Renamed the group {group} to {name.Trim()}.";
     }
 
@@ -341,8 +372,11 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (!CanEditGroup(group)) return;
         var count = State.Projects.Count(p => !p.IsInbox && ProjectGroups.Same(p.Group, group));
-        var moves = count == 1 ? "Its project moves" : $"Its {count} projects move";
-        if (count > 0 && MessageBox.Show(Application.Current.MainWindow!, $"Delete the group \"{group}\"?\n\n{moves} to Personal.",
+        var comments = State.Settings.CommentsFor(group!).CountComments();
+        var moves = count == 1 ? "Its project moves to Personal." : $"Its {count} projects move to Personal.";
+        var lost = comments == 1 ? "Its discussion (1 comment) is deleted." : $"Its discussion ({comments} comments) is deleted.";
+        var details = string.Join(" ", new[] { count > 0 ? moves : null, comments > 0 ? lost : null }.OfType<string>());
+        if (details.Length > 0 && MessageBox.Show(Application.Current.MainWindow!, $"Delete the group \"{group}\"?\n\n{details}",
                 "Delete group", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         ApplyGroupChange(GroupOperations.Delete(State.Workspace, group!));
         State.StatusText = count == 0 ? $"Deleted the group {group}." : $"Deleted the group {group}; its projects moved to Personal.";
@@ -353,6 +387,8 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var project in changedProjects) State.MarkDirty(project, touch: false);
         State.MarkSettingsDirty();
         OnPropertyChanged(nameof(CollapsedGroups));
+        OnPropertyChanged(nameof(GroupCommentCounts));
+        Discussion?.Sync();
         State.NotifyListChanged();
     }
 

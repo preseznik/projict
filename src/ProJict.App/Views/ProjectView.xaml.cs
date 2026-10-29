@@ -34,12 +34,14 @@ public partial class ProjectView : UserControl
         {
             _vm.FocusRequested -= OnFocusRequested;
             _vm.FocusAddItemRequested -= OnFocusAddItem;
+            _vm.CaretOf = null;
         }
         _vm = DataContext as ProjectViewModel;
         if (_vm != null)
         {
             _vm.FocusRequested += OnFocusRequested;
             _vm.FocusAddItemRequested += OnFocusAddItem;
+            _vm.CaretOf = id => FindRowTextBox(id) is { IsKeyboardFocused: true } box ? box.CaretIndex : null;
         }
     }
 
@@ -55,6 +57,43 @@ public partial class ProjectView : UserControl
             }, DispatcherPriority.Loaded);
             e.Handled = true;
         }
+    }
+
+    // ───────────── Narrow layout ─────────────
+
+    /// <summary>The toolbar's width with labels and the filter box at its narrowest, and the space around it in this view.</summary>
+    private double _fullToolbarWidth, _toolbarChrome, _offeredWidth;
+
+    private TextBlock[] ToolbarLabels => [ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
+
+    /// <summary>
+    /// Fits the toolbar and header to the width this view is offered (less with the discussion panel open): the toolbar
+    /// buttons drop their labels (their tooltips still name them) and the header buttons wrap before reaching the title.
+    /// Decided here because the toolbar can't shrink below its content, so its own size never shows it is too narrow.
+    /// </summary>
+    protected override Size MeasureOverride(Size constraint)
+    {
+        if (!double.IsInfinity(constraint.Width))
+        {
+            _offeredWidth = constraint.Width;
+            var compact = _fullToolbarWidth > 0 && constraint.Width < _fullToolbarWidth + _toolbarChrome;
+            var labels = compact ? Visibility.Collapsed : Visibility.Visible;
+            foreach (var label in ToolbarLabels.Where(l => l.Visibility != labels)) label.Visibility = labels;
+            // Compact also narrows the filters a little, so the buttons on the right fit next to the discussion panel.
+            TagFilterBox.Width = StateFilterBox.Width = compact ? 104 : 130;
+            Toolbar.ColumnDefinitions[0].MinWidth = compact ? 110 : 140;
+            // Leaves room for the title and the status and group boxes under it.
+            HeaderButtons.MaxWidth = Math.Clamp(constraint.Width - 340, 180, 560);
+        }
+        return base.MeasureOverride(constraint);
+    }
+
+    private void Toolbar_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (ShowDoneLabel.Visibility != Visibility.Visible) return;
+        _fullToolbarWidth = Toolbar.ColumnDefinitions[0].MinWidth + ToolbarMiddle.DesiredSize.Width + ToolbarRight.DesiredSize.Width;
+        _toolbarChrome = 2 * Toolbar.TranslatePoint(default, this).X;
+        if (_offeredWidth > 0 && _offeredWidth < _fullToolbarWidth + _toolbarChrome) InvalidateMeasure();
     }
 
     private void FilterBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -204,6 +243,18 @@ public partial class ProjectView : UserControl
         MenuItem Item(string header, ICommand command, object? parameter = null, string? gesture = null) =>
             new() { Header = header, Command = command, CommandParameter = parameter, InputGestureText = gesture ?? "" };
 
+        if (row.NeedsReview) menu.Items.Add(Item("Accept review", row.AcceptReviewCommand));
+        if (row.ClaimedBy != null) menu.Items.Add(Item($"Release {row.ClaimedBy}'s check-out", row.ReleaseClaimCommand));
+        if (row.NeedsReview || row.ClaimedBy != null) menu.Items.Add(new Separator());
+        menu.Items.Add(Item(row.CommentCount > 0 ? $"Discussion ({row.CommentCount})…" : "Discussion…", row.OpenDiscussionCommand));
+        if (row.Contributors.Count > 0)
+        {
+            var workedBy = new MenuItem { Header = "Show what was worked on by" };
+            foreach (var contributor in row.Contributors)
+                workedBy.Items.Add(Item(contributor.Name, row.Owner.ShowWorkedByCommand, contributor.Name));
+            menu.Items.Add(workedBy);
+        }
+        menu.Items.Add(new Separator());
         menu.Items.Add(Item(row.IsDone ? "Mark not done" : "Mark done", row.ToggleDoneCommand, gesture: "Ctrl+Enter"));
         menu.Items.Add(Item(row.IsInProgress ? "Not in progress" : "In progress", row.ToggleInProgressCommand, gesture: "Ctrl+I"));
         menu.Items.Add(Item("Add sub-item", row.AddChildCommand));

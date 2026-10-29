@@ -100,7 +100,17 @@ public sealed partial class CategoryViewModel : ObservableObject
         OnPropertyChanged(nameof(DoneHeader));
         OnPropertyChanged(nameof(HasDone));
         OnPropertyChanged(nameof(ShowDoneRows));
+        OnPropertyChanged(nameof(CommentCount));
+        OnPropertyChanged(nameof(DiscussionToolTip));
     }
+
+    public int CommentCount => Model.Comments.CountComments();
+    public string DiscussionToolTip => CommentCount switch
+    {
+        0 => "Discuss this category",
+        1 => "Discussion: 1 comment",
+        var n => $"Discussion: {n} comments",
+    };
 
     public void RaiseShowDone() => OnPropertyChanged(nameof(ShowDoneRows));
 
@@ -123,6 +133,7 @@ public sealed partial class CategoryViewModel : ObservableObject
     }
 
     [RelayCommand] private void CopyPrompt() => Owner.CopyPromptFor(Model.Items.Where(i => !i.IsDone));
+    [RelayCommand] private void OpenDiscussion() => Owner.OpenDiscussion(Model.Id);
     [RelayCommand] private void MoveUp() => Owner.MoveCategory(this, -1);
     [RelayCommand] private void MoveDown() => Owner.MoveCategory(this, +1);
     [RelayCommand] private void Delete() => Owner.DeleteCategory(this);

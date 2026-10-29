@@ -36,6 +36,26 @@ public sealed partial class AppState : ObservableObject
 
     [ObservableProperty] private string _statusText = "";
 
+    /// <summary>How you sign comments and history entries (Settings › AI agents &amp; comments, else the Windows user name).</summary>
+    public string UserName => string.IsNullOrWhiteSpace(AppSettings.UserName) ? Environment.UserName : AppSettings.UserName.Trim();
+
+    /// <summary>Raised after a group's discussion changed (projects' discussions raise <see cref="ProjectChanged"/>).</summary>
+    public event Action<string>? GroupCommentsChanged;
+
+    public void PostGroupComment(string group, Comment comment, Guid? replyTo)
+    {
+        Settings.SetComments(group, Discussions.Post(Settings.CommentsFor(group), comment, replyTo));
+        MarkSettingsDirty();
+        GroupCommentsChanged?.Invoke(group);
+    }
+
+    public void RemoveGroupComment(string group, Guid commentId)
+    {
+        Settings.SetComments(group, Discussions.Remove(Settings.CommentsFor(group), commentId));
+        MarkSettingsDirty();
+        GroupCommentsChanged?.Invoke(group);
+    }
+
     /// <summary>Raised after any edit to a project (sidebar counts, dashboard).</summary>
     public event Action<Project>? ProjectChanged;
 

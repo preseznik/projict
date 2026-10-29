@@ -12,7 +12,7 @@ public sealed class SingleInstance : IDisposable
 
     public SingleInstance(string dataRoot)
     {
-        var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dataRoot.ToLowerInvariant())))[..16];
+        var id = IdFor(dataRoot);
         _mutex = new Mutex(true, $"ProJict-{id}-mutex", out var created);
         IsFirst = created;
         _activate = new EventWaitHandle(false, EventResetMode.AutoReset, $"ProJict-{id}-activate");
@@ -21,6 +21,17 @@ public sealed class SingleInstance : IDisposable
     }
 
     public bool IsFirst { get; }
+
+    /// <summary>Names the per-data-folder objects (mutex, activation event, agent pipe).</summary>
+    public static string IdFor(string dataRoot) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(dataRoot.ToLowerInvariant())))[..16];
+
+    public static bool IsRunning(string dataRoot)
+    {
+        if (!Mutex.TryOpenExisting($"ProJict-{IdFor(dataRoot)}-mutex", out var mutex)) return false;
+        mutex.Dispose();
+        return true;
+    }
 
     /// <summary>Raised on a background thread when another launch wants this instance in front.</summary>
     public event Action? Activated;

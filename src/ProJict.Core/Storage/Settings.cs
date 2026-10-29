@@ -1,3 +1,5 @@
+using ProJict.Core.Model;
+
 namespace ProJict.Core.Storage;
 
 /// <summary>Machine-local bootstrap settings (%LocalAppData%\ProJict\settings.json).</summary>
@@ -11,6 +13,10 @@ public sealed class AppSettings
     public bool WindowMaximized { get; set; }
     public Guid? LastProjectId { get; set; }
     public bool CheckForUpdates { get; set; } = true;
+    /// <summary>Let AI agents (MCP clients started with ProJict.exe --mcp) read and update projects.</summary>
+    public bool AllowAgents { get; set; } = true;
+    /// <summary>How you sign comments and history entries; empty means the Windows user name.</summary>
+    public string? UserName { get; set; }
     /// <summary>Ask the GitHub CLI (gh) for its sign-in, so release checks include private repositories.</summary>
     public bool UseGitHubCliSignIn { get; set; }
     public DateTime? LastUpdateCheck { get; set; }
@@ -87,6 +93,21 @@ public sealed class WorkspaceSettings
     public List<Guid>? SidebarHiddenProjects { get; set; }
     /// <summary>Sidebar groups the user collapsed.</summary>
     public List<string> CollapsedGroups { get; set; } = [];
+    /// <summary>Discussion threads per group name; null while no group has any.</summary>
+    public Dictionary<string, List<Comment>>? GroupComments { get; set; }
+
+    public List<Comment>? CommentsFor(string group) =>
+        GroupComments?.FirstOrDefault(kv => string.Equals(kv.Key, group.Trim(), StringComparison.OrdinalIgnoreCase)).Value;
+
+    /// <summary>Stores a group's threads under its current name; null or empty removes them.</summary>
+    public void SetComments(string group, List<Comment>? threads)
+    {
+        if (GroupComments != null)
+            foreach (var key in GroupComments.Keys.Where(k => string.Equals(k, group.Trim(), StringComparison.OrdinalIgnoreCase)).ToList())
+                GroupComments.Remove(key);
+        if (threads is { Count: > 0 }) (GroupComments ??= [])[group.Trim()] = threads;
+        if (GroupComments is { Count: 0 }) GroupComments = null;
+    }
 
     public static bool IsDefaultGroup(string? name) =>
         string.Equals(name?.Trim(), PersonalGroup, StringComparison.OrdinalIgnoreCase) ||

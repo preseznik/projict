@@ -8,21 +8,24 @@ using ProJict.Core.Model;
 
 namespace ProJict.App.ViewModels;
 
-/// <summary>A file attached to an item, shown under its text: a thumbnail for images, otherwise a chip with the file name.</summary>
+/// <summary>A file attached to an item or note: a thumbnail for images, otherwise a chip with the file name.</summary>
 public sealed partial class AttachmentViewModel
 {
     // Rows are rebuilt on every edit; stored attachments never change, so each thumbnail is decoded once.
     private static readonly Dictionary<Guid, ImageSource?> Thumbnails = [];
     private const int ThumbnailPixels = 480;
 
-    public AttachmentViewModel(ItemRowViewModel row, Attachment model)
+    private readonly ProjectViewModel _owner;
+    private readonly Action _remove;
+
+    public AttachmentViewModel(ProjectViewModel owner, Attachment model, Action remove)
     {
-        Row = row;
+        _owner = owner;
+        _remove = remove;
         Model = model;
-        Path = row.Owner.AttachmentPath(model);
+        Path = owner.AttachmentPath(model);
     }
 
-    public ItemRowViewModel Row { get; }
     public Attachment Model { get; }
     public string Path { get; }
     public string FileName => Model.FileName;
@@ -31,9 +34,9 @@ public sealed partial class AttachmentViewModel
     public string SizeText => FormatSize(Model.Size);
     public string ToolTip => $"{FileName} · {SizeText}\nClick to open · right-click for more";
 
-    [RelayCommand] private void Open() => Row.Owner.OpenAttachment(this);
-    [RelayCommand] private void ShowInFolder() => Row.Owner.ShowAttachmentInFolder(this);
-    [RelayCommand] private void Remove() => Row.Owner.RemoveAttachment(Row, Model);
+    [RelayCommand] private void Open() => _owner.OpenAttachment(this);
+    [RelayCommand] private void ShowInFolder() => _owner.ShowAttachmentInFolder(this);
+    [RelayCommand] private void Remove() => _remove();
 
     [RelayCommand]
     private void CopyPath()

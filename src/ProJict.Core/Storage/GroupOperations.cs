@@ -32,16 +32,20 @@ public static class GroupOperations
         if (i >= 0) settings.Groups[i] = newName;
         else settings.Groups.Add(newName);
         settings.CollapsedGroups = settings.CollapsedGroups.Select(g => Same(g, oldName) ? newName : g).ToList();
+        var comments = settings.CommentsFor(oldName);
+        settings.SetComments(oldName, null);
+        settings.SetComments(newName, comments);
         return MoveProjects(workspace, oldName, newName);
     }
 
-    /// <summary>Deletes a group; its projects move to Personal. Returns the projects that moved.</summary>
+    /// <summary>Deletes a group and its discussion; its projects move to Personal. Returns the projects that moved.</summary>
     public static List<Project> Delete(Workspace workspace, string name)
     {
         if (WorkspaceSettings.IsDefaultGroup(name)) throw new InvalidOperationException($"{name} can't be deleted.");
         var settings = workspace.Settings;
         settings.Groups.RemoveAll(g => Same(g, name));
         settings.CollapsedGroups = settings.CollapsedGroups.Where(g => !Same(g, name)).ToList();
+        settings.SetComments(name, null);
         return MoveProjects(workspace, name, WorkspaceSettings.PersonalGroup);
     }
 

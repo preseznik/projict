@@ -20,6 +20,8 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
     public string InProgressText => $"{Stats.InProgress} in progress";
     public bool HasBugs => Stats.OpenBugs > 0;
     public string BugsText => Stats.OpenBugs == 1 ? "1 bug" : $"{Stats.OpenBugs} bugs";
+    public bool HasReview => Stats.ToReview > 0;
+    public string ReviewText => $"{Stats.ToReview} to review";
     public bool IsStale => Project.Status is ProjectStatus.Active && Stats.IsStale(staleDays, DateTime.Now);
     public bool HasGitHubRelease => Project.GitHubRelease?.Tag != null;
     public string? GitHubReleaseTag => Project.GitHubRelease?.Tag;
@@ -39,7 +41,9 @@ public sealed partial class ProjectCardViewModel(Project project, ProjectStats s
     }
 }
 
-public sealed record RecentDoneRow(string ProjectName, string CategoryName, string Text, string When, Project Project, TodoItem Item);
+/// <summary>A line in the dashboard's side feed; a click opens the item (or project) and, for a comment, its discussion.</summary>
+public sealed record RecentDoneRow(string ProjectName, string CategoryName, string Text, string When, Project? Project, TodoItem? Item,
+    DiscussionTarget? Discussion = null);
 
 public sealed partial class DashboardViewModel : ObservableObject
 {
@@ -67,6 +71,11 @@ public sealed partial class DashboardViewModel : ObservableObject
 
     public List<ProjectCardViewModel> Cards { get; private set; } = [];
     public List<RecentDoneRow> RecentDone { get; private set; } = [];
+    /// <summary>Items AI agents finished that wait for the user's review, newest first.</summary>
+    public List<RecentDoneRow> ToReview { get; private set; } = [];
+    public string ToReviewHeader => $"Waiting for your review ({ToReview.Count})";
+    /// <summary>What AI agents did in the last 7 days (history and comments), newest first.</summary>
+    public List<RecentDoneRow> AgentActivity { get; private set; } = [];
     public List<string> GroupFilters { get; private set; } = [AllGroups];
     public List<string> StatusFilters { get; } = [NotArchived, AnyStatus, .. Enum.GetNames<ProjectStatus>()];
     public List<string> SortOptions { get; } = ["Last activity", "Name", "Open items", "Progress"];
@@ -114,8 +123,20 @@ public sealed partial class DashboardViewModel : ObservableObject
             .ToList();
         OnPropertyChanged(nameof(RecentDone));
 
+        ToReview = _state.Projects.Where(p => !Filter.IsHidden(p))
+            .SelectMany(p => p.Walk().Where(l => l.Item.NeedsReview).Select(l => (Project: p, Loc: l)))
+            .OrderByDescending(x => x.Loc.Item.DoneAt)
+            .Select(x => new RecentDoneRow(x.Project.Name, x.Loc.Category.Name, x.Loc.Item.DisplayText().Replace("\n", " "),
+                Ago(x.Loc.Item.DoneAt ?? DateTime.Now), x.Project, x.Loc.Item))
+            .ToList();
+        OnPropertyChanged(nameof(ToReview));
+        OnPropertyChanged(nameof(ToReviewHeader));
+        AgentActivity = BuildAgentActivity(_state.Projects.Where(p => !Filter.IsHidden(p)).ToList(), DateTime.Now.AddDays(-7));
+        OnPropertyChanged(nameof(AgentActivity));
+
         var all = shown.Where(p => p.Status != ProjectStatus.Archived).Select(PortfolioStats.For).ToList();
-        Summary = $"{all.Count} projects · {all.Sum(s => s.Open)} open items · {all.Sum(s => s.InProgress)} in progress · {RecentDone.Count} done this week";
+        Summary = $"{all.Count} projects · {all.Sum(s => s.Open)} open items · {all.Sum(s => s.InProgress)} in progress · {RecentDone.Count} done this week" +
+                  (ToReview.Count > 0 ? $" · {ToReview.Count} to review" : "");
     }
 
     /// <summary>"Released" also takes in projects whose GitHub repository has a published release.</summary>
@@ -128,10 +149,42 @@ public sealed partial class DashboardViewModel : ObservableObject
           + "Enter your GitHub account in Settings › GitHub so ProJict can find the repositories."
         : "No projects to show.";
 
+    private List<RecentDoneRow> BuildAgentActivity(List<Project> projects, DateTime since)
+    {
+        static string Line(string text) => text.Replace("\r\n", " ").Replace('\n', ' ');
+        var entries = new List<(DateTime At, RecentDoneRow Row)>();
+        foreach (var project in projects)
+        {
+            foreach (var loc in project.Walk())
+            {
+                foreach (var a in (loc.Item.Activity ?? []).Where(a => a.Agent && a.At >= since))
+                    entries.Add((a.At, new RecentDoneRow(project.Name, loc.Category.Name, $"{a.By}: {Line(a.Text)}", Ago(a.At), project, loc.Item)));
+                foreach (var (c, _) in loc.Item.Comments.Walk().Where(e => e.Comment.Agent && !e.Comment.Deleted && e.Comment.At >= since))
+                    entries.Add((c.At, new RecentDoneRow(project.Name, loc.Category.Name, $"{c.By} commented: {Line(c.Text)}", Ago(c.At), project, loc.Item,
+                        DiscussionTarget.InProject(project, loc.Item.Id))));
+            }
+            foreach (var category in project.Categories)
+                foreach (var (c, _) in category.Comments.Walk().Where(e => e.Comment.Agent && !e.Comment.Deleted && e.Comment.At >= since))
+                    entries.Add((c.At, new RecentDoneRow(project.Name, category.Name, $"{c.By} commented: {Line(c.Text)}", Ago(c.At), project, null,
+                        DiscussionTarget.InProject(project, category.Id))));
+        }
+        foreach (var group in _state.Settings.Groups)
+            foreach (var (c, _) in _state.Settings.CommentsFor(group).Walk().Where(e => e.Comment.Agent && !e.Comment.Deleted && e.Comment.At >= since))
+                entries.Add((c.At, new RecentDoneRow(group, "group discussion", $"{c.By} commented: {Line(c.Text)}", Ago(c.At), null, null,
+                    DiscussionTarget.ForGroup(group))));
+        return entries.OrderByDescending(e => e.At).Take(25).Select(e => e.Row).ToList();
+    }
+
     [RelayCommand]
     private void OpenRecent(RecentDoneRow? row)
     {
-        if (row != null) _main.OpenProject(row.Project).Reveal(row.Item);
+        if (row == null) return;
+        if (row.Project != null)
+        {
+            var project = _main.OpenProject(row.Project);
+            if (row.Item != null) project.Reveal(row.Item);
+        }
+        if (row.Discussion != null) _main.OpenDiscussion(row.Discussion);
     }
 
     public static string Ago(DateTime when)

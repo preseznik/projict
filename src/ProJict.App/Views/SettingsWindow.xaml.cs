@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         _state = state;
+        MaxHeight = SystemParameters.WorkArea.Height - 24;
         var s = state.Settings;
         DataRoot.Text = state.Store.DataRoot;
         MirrorEnabled.IsChecked = s.MirrorEnabled;
@@ -27,10 +28,34 @@ public partial class SettingsWindow : Window
         Groups.Text = string.Join(", ", s.Groups);
         VsCodePath.Text = s.VsCodePath ?? "";
         CheckUpdates.IsChecked = state.AppSettings.CheckForUpdates;
+        AllowAgents.IsChecked = state.AppSettings.AllowAgents;
+        UserName.Text = state.UserName;
+        McpCommand.Text = McpRegistrationCommand(state);
         GitHubAccount.Text = s.GitHubAccount ?? "";
         UseGitHubCli.IsChecked = state.AppSettings.UseGitHubCliSignIn;
         VersionText.Text = $"ProJict {UpdateService.CurrentVersionText}";
         UpdatePanel.DataContext = App.Current.MainVm.Updates;
+    }
+
+    /// <summary>The Claude Code command that registers this ProJict (and its data folder, when it isn't the remembered one).</summary>
+    public static string McpRegistrationCommand(AppState state)
+    {
+        var data = string.Equals(state.AppSettings.DataRoot is { } remembered ? Path.GetFullPath(remembered) : null, state.Store.DataRoot,
+            StringComparison.OrdinalIgnoreCase) ? "" : $" --data \"{state.Store.DataRoot}\"";
+        return $"claude mcp add --scope user projict -- \"{Environment.ProcessPath}\" --mcp{data}";
+    }
+
+    private void CopyMcpCommand_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Clipboard.SetText(McpCommand.Text);
+            _state.StatusText = "Copied the command that adds ProJict to Claude Code.";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            _state.StatusText = "Clipboard is busy, try again.";
+        }
     }
 
     private async void CheckNow_Click(object sender, RoutedEventArgs e)
@@ -126,6 +151,9 @@ public partial class SettingsWindow : Window
 
         App.ApplyTheme(s.Theme);
         _state.AppSettings.CheckForUpdates = CheckUpdates.IsChecked == true;
+        _state.AppSettings.AllowAgents = AllowAgents.IsChecked == true;
+        _state.AppSettings.UserName = string.IsNullOrWhiteSpace(UserName.Text) || UserName.Text.Trim() == Environment.UserName ? null : UserName.Text.Trim();
+        App.Current.SetAgentAccess(_state.AppSettings.AllowAgents);
         ApplyGitHubSettings();
         _state.SaveAppSettings();
 

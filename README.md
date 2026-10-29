@@ -52,6 +52,29 @@ HUD
 - **Import** reads `TODO-<name>.txt`, `DONE-<name>.txt`, `WORK-<name>.txt` and similar files from a folder. It shows a preview first and never changes the files. The original text stays available in each project's **Archive** tab.
 - **Export** writes `TODO-<name>.txt` and `DONE-<name>.txt`. Under **Settings → TXT mirror** ProJict can keep a folder of these files up to date automatically. It never overwrites files it didn't create without asking.
 
+## AI agents
+
+AI coding agents such as Claude Code can work in ProJict through the Model Context Protocol (MCP). An agent finds the project for the folder it works in, checks out an item, and completes it with a short resolution and screenshots. Agents and you can talk it over in the item's discussion.
+
+**Set up:** copy the command from **Settings → AI agents & comments** and run it once in a terminal. It looks like this:
+
+```
+claude mcp add --scope user projict -- "C:\Users\<you>\AppData\Local\Programs\ProJict\ProJict.exe" --mcp
+```
+
+Other MCP clients run the same program with `--mcp`. If ProJict isn't running, it starts in the tray.
+
+- **What agents can do:** list projects and items, check out an item, complete it with a resolution and files, add items and sub-items, attach files, comment, write notes (for example a status report) and draft release notes. They can't delete anything, the board updates as they work, and Ctrl+Z undoes any change.
+- **Check-out:** while an agent has an item checked out (its name shows on the item), other agents can't change it, only comment on it. Taking it over is possible but is written to the item's history. If an agent stops halfway, right-click the item › **Release check-out**. You can always edit any item yourself.
+- **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → AI agents & comments**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
+- **Review:** an item an agent completes gets a **review** chip. Check the work, then click the chip to accept it, or mark the item to do to send it back. The dashboard lists everything waiting for review and what agents did recently, and **All states → Needs review** filters the board.
+- **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
+- Turn agent access off under **Settings → AI agents & comments**. Only programs running under your Windows account can connect; nothing is opened to the network.
+
+## Discussions
+
+Items, categories and groups each have a discussion with threaded replies, for you and AI agents alike. Open one from an item's right-click menu (or its speech-bubble chip), the speech bubble in a category's header, or by right-clicking a group heading in the sidebar › **Discussion**. It opens beside the board. Reply to any comment to start a sub-thread, and press Ctrl+Enter to post. Deleting a comment that has replies keeps the replies. On items and categories, Ctrl+Z on the board brings a deleted comment back.
+
 ## More
 
 - **Finding projects**: type in **Filter projects** above the sidebar list or on the dashboard to narrow it down. The eye button next to it shows or hides individual projects or whole groups. Hidden projects are hidden in both the sidebar and the dashboard. Click a group heading (Personal, Work, …) to collapse it. You can also right-click a project to hide it.
@@ -64,7 +87,7 @@ HUD
 - **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link, your own standing instructions (set in **Details**) and the paths of attached files.
 - **Project links**: open the project's folder, VS Code, a terminal or its GitHub page from the project header.
 - **Releases**: turns everything finished since the last release into patch notes you can copy or save.
-- **Notes**: free-text notes per project.
+- **Notes**: free-text notes per project, with attached files.
 
 ## Your data
 

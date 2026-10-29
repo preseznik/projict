@@ -14,6 +14,7 @@
     <local:StatusToBrushConverter x:Key="StatusToBrush" />
     <local:TagToBrushConverter x:Key="TagToBrush" />
     <local:GroupExpandedConverter x:Key="GroupExpanded" />
+    <local:GroupCommentCountConverter x:Key="GroupCommentCount" />
 
     <Style x:Key="MutedText" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
