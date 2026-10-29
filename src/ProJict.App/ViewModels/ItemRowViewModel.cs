@@ -61,6 +61,10 @@ public sealed partial class ItemRowViewModel : ObservableObject
         : Item.Imported ? "imported"
         : Item.DoneAt?.ToString("d MMM yyyy", CultureInfo.CurrentCulture);
 
+    private IReadOnlyList<AttachmentViewModel>? _attachments;
+    public IReadOnlyList<AttachmentViewModel> Attachments => _attachments ??= (Item.Attachments ?? []).Select(a => new AttachmentViewModel(this, a)).ToList();
+    public bool HasAttachments => Item.HasAttachments;
+
     public string? ReleaseText => Item.ReleaseId is { } id
         ? Owner.Project.Releases.FirstOrDefault(r => r.Id == id) is { IsBaseline: false } r ? r.Version : null
         : null;
@@ -69,7 +73,11 @@ public sealed partial class ItemRowViewModel : ObservableObject
     [ObservableProperty] private bool _isVisible = true;
     [ObservableProperty] private bool _isDropTarget;
 
-    public void Refresh() => OnPropertyChanged(string.Empty);
+    public void Refresh()
+    {
+        _attachments = null;
+        OnPropertyChanged(string.Empty);
+    }
 
     public override string ToString() => Item.DisplayText();
 
@@ -85,4 +93,6 @@ public sealed partial class ItemRowViewModel : ObservableObject
     [RelayCommand] private void CopyPrompt() => Owner.CopyPromptFor([Item]);
     [RelayCommand] private void ToggleSelected() => IsSelected = !IsSelected;
     [RelayCommand] private void AddChild() => Owner.AddChild(this);
+    [RelayCommand] private void Attach() => Owner.BrowseAttachments(this);
+    [RelayCommand] private void PasteAttachments() => Owner.PasteAttachments(this);
 }

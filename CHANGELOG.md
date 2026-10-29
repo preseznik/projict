@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.8 (2026-10-29)
+
+- Attach files and images to items: drag files onto an item, paste a screenshot or copied files with Ctrl+V, or right-click › Attach files…. Images show as thumbnails under the item, and a click opens the file.
+- Copy prompt lists the paths of attached files, so an AI assistant can open them.
+
 ## 0.1.7 (2026-10-29)
 
 - Right-click an item's checkbox to mark it as to do, in progress or done.

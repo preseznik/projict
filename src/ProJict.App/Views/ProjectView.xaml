@@ -11,12 +11,17 @@
     </UserControl.InputBindings>
 
     <UserControl.Resources>
-        <!-- One line of the outline: grip, three-state checkbox, tag chip, editable text, release/done date. -->
+        <!-- One line of the outline: grip, three-state checkbox, tag chip, editable text, release/done date, attachments below. -->
         <DataTemplate x:Key="RowTemplate" DataType="{x:Type vm:ItemRowViewModel}">
             <Border x:Name="RowRoot" CornerRadius="4" Padding="0,1" Background="Transparent" BorderThickness="2,0,0,0" BorderBrush="Transparent"
-                    AllowDrop="True" DragOver="Row_DragOver" DragLeave="Row_DragLeave" Drop="Row_Drop"
+                    AllowDrop="True" DragOver="Row_DragOver" PreviewDragLeave="Row_DragLeave" Drop="Row_Drop"
+                    PreviewDragEnter="Row_PreviewFileDragOver" PreviewDragOver="Row_PreviewFileDragOver" PreviewDrop="Row_PreviewFileDrop"
                     Visibility="{Binding IsVisible, Converter={StaticResource BoolToVis}}">
                 <Grid Margin="{Binding IndentMargin}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="18" />
                         <ColumnDefinition Width="Auto" />
@@ -47,6 +52,34 @@
                         </Border>
                         <TextBlock Text="{Binding DoneAtText}" Style="{StaticResource MutedText}" FontSize="11" />
                     </StackPanel>
+                    <ItemsControl Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" ItemsSource="{Binding Attachments}" Focusable="False"
+                                  Margin="4,1,0,3" Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:AttachmentViewModel}">
+                                <Button Style="{StaticResource SubtleButton}" Padding="0" Margin="0,0,6,4" Command="{Binding OpenCommand}"
+                                        ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding FileName}"
+                                        ContextMenuOpening="Attachment_ContextMenuOpening">
+                                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1" CornerRadius="4" Padding="6,3">
+                                        <Grid>
+                                            <Image Source="{Binding Thumbnail}" MaxHeight="80" MaxWidth="240" Stretch="Uniform" Margin="-4,-1"
+                                                   Visibility="{Binding ShowsThumbnail, Converter={StaticResource BoolToVis}}" />
+                                            <StackPanel Orientation="Horizontal" Visibility="{Binding ShowsThumbnail, Converter={StaticResource InvBoolToVis}}">
+                                                <TextBlock Style="{StaticResource Icon}" Text="&#xE8A5;" FontSize="13" Margin="0,0,6,0" />
+                                                <TextBlock Text="{Binding FileName}" FontSize="12" MaxWidth="220" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding SizeText}" Style="{StaticResource MutedText}" FontSize="11" Margin="6,0,0,0" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Grid>
             </Border>
             <DataTemplate.Triggers>

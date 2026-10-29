@@ -6,7 +6,8 @@ namespace ProJict.Core.Features;
 /// <summary>Turns selected items into a Markdown prompt for a coding agent (Claude, Codex, …).</summary>
 public static class PromptBuilder
 {
-    public static string Build(Project project, IEnumerable<TodoItem> selection)
+    /// <param name="attachmentPath">Where an attached file is stored; attachments are listed by that path so the agent can open them.</param>
+    public static string Build(Project project, IEnumerable<TodoItem> selection, Func<Attachment, string>? attachmentPath = null)
     {
         var selected = selection.Select(i => i.Id).ToHashSet();
         var sb = new StringBuilder();
@@ -27,13 +28,13 @@ public static class PromptBuilder
             if (roots.Count == 0) continue;
             sb.Append("\n## ").Append(category.Name).Append('\n');
             if (!string.IsNullOrWhiteSpace(category.Description)) sb.Append(category.Description.Trim()).Append('\n');
-            foreach (var item in roots) WriteItem(sb, item, 0);
+            foreach (var item in roots) WriteItem(sb, item, 0, attachmentPath);
         }
 
         return sb.ToString().TrimEnd() + "\n";
     }
 
-    private static void WriteItem(StringBuilder sb, TodoItem item, int depth)
+    private static void WriteItem(StringBuilder sb, TodoItem item, int depth, Func<Attachment, string>? attachmentPath)
     {
         var indent = new string(' ', depth * 2);
         var lines = item.Text.Replace("\r\n", "\n").Split('\n');
@@ -45,7 +46,10 @@ public static class PromptBuilder
         sb.Append('\n');
         foreach (var line in lines.Skip(1).Where(l => l.Trim().Length > 0))
             sb.Append(indent).Append("  ").Append(line.Trim()).Append('\n');
-        foreach (var child in item.Children) WriteItem(sb, child, depth + 1);
+        if (attachmentPath != null)
+            foreach (var attachment in item.Attachments ?? [])
+                sb.Append(indent).Append("  Attached: ").Append(attachmentPath(attachment)).Append('\n');
+        foreach (var child in item.Children) WriteItem(sb, child, depth + 1, attachmentPath);
     }
 
     private static IEnumerable<TodoItem> Ancestors(Category category, TodoItem item)

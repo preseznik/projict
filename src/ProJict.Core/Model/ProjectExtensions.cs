@@ -85,4 +85,11 @@ public static class ProjectExtensions
     /// <summary>Text as written in the TXT files: "TAG: text".</summary>
     public static string DisplayText(this TodoItem item) =>
         string.IsNullOrEmpty(item.Tag) ? item.Text : $"{item.Tag}: {item.Text}";
+
+    /// <summary>What the filter and search look in: the item's text plus the names of its attached files.</summary>
+    public static string SearchText(this TodoItem item) =>
+        item.HasAttachments ? $"{item.DisplayText()} {string.Join(" ", item.Attachments!.Select(a => a.FileName))}" : item.DisplayText();
+
+    public static IEnumerable<Attachment> Attachments(this Project project) =>
+        project.Walk().SelectMany(l => l.Item.Attachments ?? []);
 }

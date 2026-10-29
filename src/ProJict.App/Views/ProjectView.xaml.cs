@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using ProJict.App.Services;
 using ProJict.App.ViewModels;
 
 namespace ProJict.App.Views;
@@ -172,6 +173,9 @@ public partial class ProjectView : UserControl
             case Key.I when mods == ModifierKeys.Control:
                 vm.SetState(row, row.IsInProgress ? Core.Model.ItemState.Todo : Core.Model.ItemState.InProgress);
                 break;
+            case Key.V when mods == ModifierKeys.Control && ClipboardAttachments.HasAttachment():
+                vm.PasteAttachments(row);
+                break;
             case Key.Space when mods == ModifierKeys.Control:
                 row.IsSelected = !row.IsSelected;
                 break;
@@ -203,6 +207,8 @@ public partial class ProjectView : UserControl
         menu.Items.Add(Item(row.IsDone ? "Mark not done" : "Mark done", row.ToggleDoneCommand, gesture: "Ctrl+Enter"));
         menu.Items.Add(Item(row.IsInProgress ? "Not in progress" : "In progress", row.ToggleInProgressCommand, gesture: "Ctrl+I"));
         menu.Items.Add(Item("Add sub-item", row.AddChildCommand));
+        menu.Items.Add(Item("Attach files…", row.AttachCommand));
+        if (ClipboardAttachments.HasAttachment()) menu.Items.Add(Item("Paste as attachment", row.PasteAttachmentsCommand, gesture: "Ctrl+V"));
 
         var tags = new MenuItem { Header = "Tag" };
         foreach (var tag in ProjectViewModel.TagChoices)
@@ -245,6 +251,19 @@ public partial class ProjectView : UserControl
             };
             menu.Items.Add(new MenuItem { Header = header, InputGestureText = gesture, Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => row.Owner.SetState(row, state)) });
         }
+        menu.IsOpen = true;
+    }
+
+    private void Attachment_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: AttachmentViewModel attachment } element) return;
+        e.Handled = true;
+        var menu = new ContextMenu { PlacementTarget = element };
+        menu.Items.Add(new MenuItem { Header = "Open", Command = attachment.OpenCommand });
+        menu.Items.Add(new MenuItem { Header = "Show in folder", Command = attachment.ShowInFolderCommand });
+        menu.Items.Add(new MenuItem { Header = "Copy path", Command = attachment.CopyPathCommand });
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Remove", Command = attachment.RemoveCommand });
         menu.IsOpen = true;
     }
 
@@ -327,6 +346,23 @@ public partial class ProjectView : UserControl
         var after = e.GetPosition(element).Y > element.ActualHeight / 2;
         e.Handled = true;
         target.Owner.MoveItem(source, target, after);
+    }
+
+    // Files from Explorer are taken in the preview, before the row's text box can claim them.
+    private void Row_PreviewFileDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || (sender as FrameworkElement)?.DataContext is not ItemRowViewModel row) return;
+        e.Effects = DragDropEffects.Copy;
+        row.IsDropTarget = true;
+        e.Handled = true;
+    }
+
+    private void Row_PreviewFileDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || (sender as FrameworkElement)?.DataContext is not ItemRowViewModel row) return;
+        row.IsDropTarget = false;
+        e.Handled = true;
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths) _ = row.Owner.AttachFiles(row, paths);
     }
 
     private void Category_DragOver(object sender, DragEventArgs e)

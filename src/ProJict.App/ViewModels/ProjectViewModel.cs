@@ -237,7 +237,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         bool Matches(TodoItem item)
         {
             var tagOk = tag == AllTags || (tag == NoTag ? string.IsNullOrEmpty(item.Tag) : string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase));
-            var text = item.DisplayText();
+            var text = item.SearchText();
             return tagOk && StateOk(item) && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -690,7 +690,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             _state.StatusText = "Nothing to copy — no open items.";
             return;
         }
-        var text = PromptBuilder.Build(Project, list);
+        var text = PromptBuilder.Build(Project, list, _state.Store.AttachmentPath);
         try
         {
             Clipboard.SetText(text);
@@ -712,6 +712,111 @@ public sealed partial class ProjectViewModel : ObservableObject
     private void ClearSelection()
     {
         foreach (var row in AllRows) row.IsSelected = false;
+    }
+
+    // ───────────── Attachments ─────────────
+
+    public string AttachmentPath(Attachment attachment) => _state.Store.AttachmentPath(attachment);
+
+    public void BrowseAttachments(ItemRowViewModel row)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Attach files", Multiselect = true };
+        if (dialog.ShowDialog(Application.Current.MainWindow) == true) _ = AttachFiles(row, dialog.FileNames);
+    }
+
+    /// <summary>Copies the files into the data folder (off the UI thread, they may be large) and attaches them to the row's item.</summary>
+    public async Task AttachFiles(ItemRowViewModel row, IReadOnlyList<string> paths)
+    {
+        var files = paths.Where(File.Exists).ToList();
+        if (files.Count == 0)
+        {
+            _state.StatusText = "Only files can be attached, not folders.";
+            return;
+        }
+        _state.StatusText = files.Count == 1 ? $"Attaching {Path.GetFileName(files[0])}…" : $"Attaching {files.Count} files…";
+        List<Attachment> added;
+        try
+        {
+            added = await Task.Run(() => files.Select(_state.Store.ImportAttachment).ToList());
+        }
+        catch (Exception ex)
+        {
+            _state.StatusText = "Could not attach: " + ex.Message;
+            return;
+        }
+        AddAttachments(row.Item.Id, added);
+    }
+
+    /// <summary>Attaches what was copied to the clipboard: files, or an image such as a screenshot.</summary>
+    public void PasteAttachments(ItemRowViewModel row)
+    {
+        var (files, png) = ClipboardAttachments.Read();
+        if (files.Count > 0)
+        {
+            _ = AttachFiles(row, files);
+            return;
+        }
+        if (png == null)
+        {
+            _state.StatusText = "The clipboard has no image or files to attach.";
+            return;
+        }
+        try
+        {
+            AddAttachments(row.Item.Id, [_state.Store.WriteAttachment($"Pasted image {DateTime.Now:yyyy-MM-dd HHmmss}.png", png)]);
+        }
+        catch (Exception ex)
+        {
+            _state.StatusText = "Could not attach: " + ex.Message;
+        }
+    }
+
+    private void AddAttachments(Guid itemId, List<Attachment> added)
+    {
+        // Found again by id: an undo while the files were copying replaces the item objects.
+        if (Project.Find(itemId) is not { } loc)
+        {
+            _state.StatusText = "The item was removed before its files were attached.";
+            return;
+        }
+        Mutate(() => (loc.Item.Attachments ??= []).AddRange(added), [CategoryFor(loc.Category)]);
+        _state.StatusText = added.Count == 1 ? $"Attached {added[0].FileName}." : $"Attached {added.Count} files.";
+    }
+
+    public void RemoveAttachment(ItemRowViewModel row, Attachment attachment)
+    {
+        Mutate(() =>
+        {
+            row.Item.Attachments?.Remove(attachment);
+            if (row.Item.Attachments is { Count: 0 }) row.Item.Attachments = null;
+        }, [row.Category]);
+        _state.StatusText = $"Removed {attachment.FileName} (Ctrl+Z brings it back).";
+    }
+
+    // Programs and scripts are shown in their folder instead of being run by a stray click.
+    private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".exe", ".com", ".bat", ".cmd", ".msi", ".ps1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".scr", ".lnk", ".url", ".reg", ".hta", ".cpl" };
+
+    public void OpenAttachment(AttachmentViewModel attachment)
+    {
+        if (RunnableExtensions.Contains(Path.GetExtension(attachment.FileName)))
+        {
+            ShowAttachmentInFolder(attachment);
+            return;
+        }
+        if (AttachmentExists(attachment)) Try(() => ShellLauncher.OpenFile(attachment.Path));
+    }
+
+    public void ShowAttachmentInFolder(AttachmentViewModel attachment)
+    {
+        if (AttachmentExists(attachment)) Try(() => ShellLauncher.ShowInFolder(attachment.Path));
+    }
+
+    private bool AttachmentExists(AttachmentViewModel attachment)
+    {
+        if (File.Exists(attachment.Path)) return true;
+        _state.StatusText = $"{attachment.FileName} is missing from the data folder.";
+        return false;
     }
 
     // ───────────── Repo links ─────────────

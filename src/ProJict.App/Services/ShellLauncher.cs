@@ -3,11 +3,17 @@ using System.IO;
 
 namespace ProJict.App.Services;
 
-/// <summary>Opens a project's repo in Explorer, VS Code, Windows Terminal or the browser.</summary>
+/// <summary>Opens a project's repo in Explorer, VS Code, Windows Terminal or the browser, and attached files.</summary>
 public static class ShellLauncher
 {
     public static void OpenFolder(string path) =>
         Process.Start(new ProcessStartInfo("explorer.exe", Quote(path)) { UseShellExecute = true });
+
+    public static void OpenFile(string path) =>
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+
+    public static void ShowInFolder(string path) =>
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/select,{Quote(path)}") { UseShellExecute = true });
 
     public static void OpenUrl(string url) =>
         Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });

@@ -31,6 +31,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 | Ctrl+F | filter the current project |
 | Ctrl+K | search all projects |
 | Ctrl+Space | select items for **Copy prompt** |
+| Ctrl+V | with a screenshot or files copied: attach them to the item |
 
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
@@ -59,14 +60,15 @@ HUD
 - **Reusing a project's layout**: right-click a project and choose **Copy categories from** to add another project's categories (without its items).
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.
-- **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link and your own standing instructions (set in **Details**).
+- **Attachments**: drag files onto an item, paste a screenshot or copied files with Ctrl+V while editing it, or right-click it › **Attach files…**. Images show as thumbnails under the item. Click an attachment to open it; right-click it to show it in its folder, copy its path or remove it.
+- **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link, your own standing instructions (set in **Details**) and the paths of attached files.
 - **Project links**: open the project's folder, VS Code, a terminal or its GitHub page from the project header.
 - **Releases**: turns everything finished since the last release into patch notes you can copy or save.
 - **Notes**: free-text notes per project.
 
 ## Your data
 
-Projects are saved as JSON files in the folder you chose, with automatic backups in its `backups` folder. Uninstalling ProJict leaves your data where it is.
+Projects are saved as JSON files in the folder you chose, with automatic backups in its `backups` folder. Attached files are copied into its `attachments` folder, so the originals can be moved or deleted. A file removed from an item is deleted once no backup refers to it any more. Uninstalling ProJict leaves your data where it is.
 
 ## Building from source
 

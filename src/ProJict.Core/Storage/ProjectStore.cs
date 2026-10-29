@@ -29,6 +29,7 @@ public sealed class ProjectStore
     public string ProjectsDir => Path.Combine(DataRoot, "projects");
     public string BackupsDir => Path.Combine(DataRoot, "backups");
     public string WorkspacePath => Path.Combine(DataRoot, "workspace.json");
+    public string AttachmentsDir => Path.Combine(DataRoot, "attachments");
     public IReadOnlyList<string> LoadErrors => _loadErrors;
 
     public Workspace Load()
@@ -153,6 +154,74 @@ public sealed class ProjectStore
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>Where ProJict keeps its copy of an attached file: attachments/&lt;id&gt;/&lt;original file name&gt;.</summary>
+    public string AttachmentPath(Attachment attachment) =>
+        Path.Combine(AttachmentsDir, attachment.Id.ToString(), attachment.FileName);
+
+    /// <summary>Copies a file into the data folder; the original is only read.</summary>
+    public Attachment ImportAttachment(string sourcePath)
+    {
+        var attachment = new Attachment { FileName = SafeFileName(Path.GetFileName(sourcePath)) };
+        var target = AttachmentPath(attachment);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.Copy(sourcePath, target);
+        attachment.Size = new FileInfo(target).Length;
+        return attachment;
+    }
+
+    /// <summary>Stores new content (e.g. a pasted screenshot) as an attachment.</summary>
+    public Attachment WriteAttachment(string fileName, byte[] content)
+    {
+        var attachment = new Attachment { FileName = SafeFileName(fileName), Size = content.Length };
+        var target = AttachmentPath(attachment);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllBytes(target, content);
+        return attachment;
+    }
+
+    /// <summary>
+    /// Deletes stored attachments that no loaded project, project file or backup (deleted projects included) refers to
+    /// any more, so restoring a backup still finds its files. Folders created after <paramref name="createdBefore"/> are left alone.
+    /// </summary>
+    public int RemoveUnusedAttachments(IReadOnlySet<Guid> inUse, DateTime createdBefore)
+    {
+        if (!Directory.Exists(AttachmentsDir)) return 0;
+        var unused = new List<(string Dir, string Id)>();
+        foreach (var dir in Directory.EnumerateDirectories(AttachmentsDir))
+            if (Guid.TryParse(Path.GetFileName(dir), out var id) && !inUse.Contains(id) && Directory.GetCreationTime(dir) < createdBefore)
+                unused.Add((dir, id.ToString()));
+        if (unused.Count == 0) return 0;
+
+        var files = new[] { ProjectsDir, BackupsDir }.Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.json", SearchOption.AllDirectories));
+        foreach (var file in files)
+        {
+            var json = File.ReadAllText(file);
+            unused.RemoveAll(u => json.Contains(u.Id, StringComparison.OrdinalIgnoreCase));
+            if (unused.Count == 0) return 0;
+        }
+
+        var removed = 0;
+        foreach (var (dir, _) in unused)
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+                removed++;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return removed;
+    }
+
+    private static string SafeFileName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var safe = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');
+        return safe.Length == 0 ? "file" : safe;
     }
 
     private static DateTime? ParseStamp(string name)

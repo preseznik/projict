@@ -61,6 +61,7 @@ public partial class App : Application
         ApplyTheme(State.Settings.Theme);
         // One snapshot per launch, before anything is written.
         State.BackupNow();
+        State.CleanUpAttachments();
 
         MainVm = new MainViewModel(State);
         var main = new MainWindow(MainVm);

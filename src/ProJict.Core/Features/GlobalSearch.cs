@@ -24,9 +24,8 @@ public static class GlobalSearch
         {
             foreach (var loc in project.Walk())
             {
-                var text = loc.Item.DisplayText();
-                if (!Matches($"{project.Name} {loc.Category.Name} {text}", terms)) continue;
-                (loc.Item.IsDone ? done : open).Add(new SearchHit(project, loc.Category, loc.Item, null, FirstLine(text)));
+                if (!Matches($"{project.Name} {loc.Category.Name} {loc.Item.SearchText()}", terms)) continue;
+                (loc.Item.IsDone ? done : open).Add(new SearchHit(project, loc.Category, loc.Item, null, FirstLine(loc.Item.DisplayText())));
             }
             foreach (var note in project.Notes)
             {

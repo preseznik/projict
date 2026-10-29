@@ -20,8 +20,11 @@ public sealed class TodoItem
     /// <summary>True for items that came from an imported TXT file (their DoneAt is only the file date).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Imported { get; set; }
+    /// <summary>Files attached to the item; null (and left out of the JSON) while there are none.</summary>
+    public List<Attachment>? Attachments { get; set; }
 
     [JsonIgnore] public bool IsDone => State == ItemState.Done;
+    [JsonIgnore] public bool HasAttachments => Attachments is { Count: > 0 };
 
     public void SetState(ItemState state)
     {
@@ -37,8 +40,23 @@ public sealed class TodoItem
     {
         var copy = (TodoItem)MemberwiseClone();
         copy.Children = Children.Select(c => c.DeepClone()).ToList();
+        copy.Attachments = Attachments?.ToList();
         return copy;
     }
+}
+
+/// <summary>A file attached to an item. ProJict keeps its own copy in the data folder (see ProjectStore.AttachmentPath).</summary>
+public sealed class Attachment
+{
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".ico", ".webp" };
+
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string FileName { get; set; } = "";
+    public long Size { get; set; }
+    public DateTime AddedAt { get; set; } = DateTime.Now;
+
+    [JsonIgnore] public bool IsImage => ImageExtensions.Contains(Path.GetExtension(FileName));
 }
 
 public sealed class Category
