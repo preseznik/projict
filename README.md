@@ -127,3 +127,7 @@ You need the [.NET 10 SDK](https://dotnet.microsoft.com/download) and [Inno Setu
 ```
 
 The installer is written to `artifacts\`.
+
+## License
+
+[BSD Zero Clause License](LICENSE) (0BSD): use, copy, change and share ProJict for any purpose, with no conditions.
