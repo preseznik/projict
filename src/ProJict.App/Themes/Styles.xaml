@@ -183,6 +183,15 @@
         </Style.Triggers>
     </Style>
 
+    <!-- A red dot: a comment you haven't read, or something else waiting for you. -->
+    <Style x:Key="UnreadDot" TargetType="Ellipse">
+        <Setter Property="Width" Value="8" />
+        <Setter Property="Height" Value="8" />
+        <Setter Property="Fill" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <Style x:Key="TagChip" TargetType="Border">
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="5,1" />

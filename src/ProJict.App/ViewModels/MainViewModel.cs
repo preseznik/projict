@@ -23,6 +23,8 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     /// <summary>Badges for the AI agents working in the project right now, shown instead of the status dot.</summary>
     public IReadOnlyList<WorkerBadge> Workers => WorkerBadge.For(main.Agents.AgentsIn(Project.Id));
     public bool HasWorkers => main.Agents.AgentsIn(Project.Id).Count > 0;
+    /// <summary>A red dot: an unread comment or an agent's work to review somewhere in the project.</summary>
+    public bool NeedsAttention => main.State.NeedsAttention(Project);
     public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
 
     /// <summary>Projects offered under "Copy categories from" in the right-click menu.</summary>
@@ -73,6 +75,19 @@ public sealed partial class MainViewModel : ObservableObject
         State = state;
         Updates = new Services.UpdateService(state);
         GitHub = new Services.GitHubService(state);
+        Issues = new Services.IssueSyncService(state, this);
+        Sharing = new Services.Sharing.SharingStore(state.PersistsSettings ? ProJict.Core.Sharing.SharingData.DefaultPath : null);
+        Host = new Services.Sharing.HostService(state, this, Sharing);
+        Guest = new Services.Sharing.GuestService(state, this, Sharing);
+        Host.Changed += () =>
+        {
+            OnPropertyChanged(nameof(PendingJoin));
+            OnPropertyChanged(nameof(HasPendingJoin));
+        };
+        Issues.Synced += p =>
+        {
+            if (_projectViewModels.TryGetValue(p.Id, out var vm)) vm.RefreshIssueSync();
+        };
         Dashboard = new DashboardViewModel(state, this);
         Feed = new FeedViewModel(state, this);
         Agents.Changed += () =>
@@ -107,6 +122,13 @@ public sealed partial class MainViewModel : ObservableObject
         RebuildList();
 
         state.ProjectListChanged += RebuildList;
+        state.ReadMarksChanged += () =>
+        {
+            OnPropertyChanged(nameof(UnreadGroups));
+            foreach (var item in ProjectItems) item.Refresh();
+            foreach (var vm in _projectViewModels.Values)
+                foreach (var category in vm.Categories) category.RefreshUnread();
+        };
         state.ProjectChanged += p =>
         {
             if (p.IsInbox) OnPropertyChanged(nameof(InboxCount));
@@ -119,6 +141,7 @@ public sealed partial class MainViewModel : ObservableObject
         state.GroupCommentsChanged += group =>
         {
             OnPropertyChanged(nameof(GroupCommentCounts));
+            OnPropertyChanged(nameof(UnreadGroups));
             if (CurrentView is DashboardViewModel) Dashboard.Refresh();
             if (CurrentView is FeedViewModel) Feed.Refresh();
             if (Discussion is { Target.Kind: DiscussionKind.Group } open && string.Equals(open.Target.Group, group, StringComparison.OrdinalIgnoreCase))
@@ -133,6 +156,12 @@ public sealed partial class MainViewModel : ObservableObject
     public AppState State { get; }
     public Services.UpdateService Updates { get; }
     public Services.GitHubService GitHub { get; }
+    public Services.IssueSyncService Issues { get; }
+    public Services.Sharing.SharingStore Sharing { get; }
+    /// <summary>Sharing your projects with other ProJict apps.</summary>
+    public Services.Sharing.HostService Host { get; }
+    /// <summary>Other ProJict apps' projects shown here.</summary>
+    public Services.Sharing.GuestService Guest { get; }
     public DashboardViewModel Dashboard { get; }
     public FeedViewModel Feed { get; }
     /// <summary>Which AI agents are connected and where they work.</summary>
@@ -160,7 +189,55 @@ public sealed partial class MainViewModel : ObservableObject
         if (!_syncingSelection && value != null) OpenProject(value.Project);
     }
 
-    partial void OnCurrentViewChanged(object? value) => OnPropertyChanged(nameof(CurrentProject));
+    partial void OnCurrentViewChanged(object? value)
+    {
+        OnPropertyChanged(nameof(CurrentProject));
+        SendViewing();
+    }
+
+    // ───────────── Sharing ─────────────
+
+    private Views.SharingWindow? _sharingWindow;
+
+    /// <summary>The oldest request to join your ProJict, shown in a bar until you answer it.</summary>
+    public Services.Sharing.JoinRequest? PendingJoin => Host.Requests.FirstOrDefault();
+    public bool HasPendingJoin => Host.Requests.Count > 0;
+
+    [RelayCommand] private void ApproveJoin() { if (PendingJoin is { } r) Host.Answer(r, Services.Sharing.JoinAnswer.Approve); }
+    [RelayCommand] private void DenyJoin() { if (PendingJoin is { } r) Host.Answer(r, Services.Sharing.JoinAnswer.Deny); }
+    [RelayCommand] private void BlockJoin() { if (PendingJoin is { } r) Host.Answer(r, Services.Sharing.JoinAnswer.Block); }
+
+    [RelayCommand]
+    private void OpenSharing()
+    {
+        if (_sharingWindow is { IsLoaded: true })
+        {
+            _sharingWindow.Activate();
+            return;
+        }
+        _sharingWindow = new Views.SharingWindow(this) { Owner = Application.Current.MainWindow };
+        _sharingWindow.Closed += (_, _) => _sharingWindow = null;
+        _sharingWindow.Show();
+    }
+
+    /// <summary>Tells the hosts which of their projects you have open.</summary>
+    public void SendViewing() => Guest?.Viewing((CurrentView as ProjectViewModel)?.Project);
+
+    /// <summary>A project shown from another ProJict went away (unshared or disconnected).</summary>
+    public void ForgetProject(Project project)
+    {
+        _projectViewModels.Remove(project.Id);
+        if (Discussion is { } open && open.Target.ProjectId == project.Id) CloseDiscussion();
+        if (CurrentProject?.Project == project) ShowDashboard();
+    }
+
+    /// <summary>Renaming, moving, archiving or deleting another ProJict's project is up to its owner.</summary>
+    private bool NotYours(Project project)
+    {
+        if (project.Remote is not { } remote) return false;
+        State.StatusText = $"{project.Name} belongs to {remote.HostName}'s ProJict; only they can rename, move, archive or delete it.";
+        return true;
+    }
 
     private void RebuildList()
     {
@@ -237,6 +314,11 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Comments per group name, for the sidebar headings.</summary>
+    /// <summary>Groups whose discussion has comments you haven't read (1), for the red dot on their heading.</summary>
+    public IReadOnlyDictionary<string, int> UnreadGroups =>
+        (State.Settings.GroupComments ?? []).Where(kv => State.HasUnread(AppState.ReadKey(kv.Key), kv.Value))
+            .ToDictionary(kv => kv.Key, _ => 1, StringComparer.OrdinalIgnoreCase);
+
     public IReadOnlyDictionary<string, int> GroupCommentCounts =>
         (State.Settings.GroupComments ?? []).ToDictionary(kv => kv.Key, kv => kv.Value.CountComments(), StringComparer.OrdinalIgnoreCase);
 
@@ -331,7 +413,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void DeleteProject(ProjectListItemViewModel? item)
     {
-        if (item == null) return;
+        if (item == null || NotYours(item.Project)) return;
         if (MessageBox.Show(Application.Current.MainWindow!,
                 $"Delete project \"{item.Name}\"?\n\nIts file is moved to the backups folder, not erased.",
                 "Delete project", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
@@ -344,7 +426,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ArchiveProject(ProjectListItemViewModel? item)
     {
-        if (item == null) return;
+        if (item == null || NotYours(item.Project)) return;
         var vm = GetProjectViewModel(item.Project);
         vm.Status = item.Project.Status == ProjectStatus.Archived ? ProjectStatus.Active : ProjectStatus.Archived;
     }
@@ -352,7 +434,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void RenameProject(ProjectListItemViewModel? item)
     {
-        if (item == null) return;
+        if (item == null || NotYours(item.Project)) return;
         var name = InputDialog.Ask(Application.Current.MainWindow!, "Rename project", "Project name:", item.Name);
         if (string.IsNullOrWhiteSpace(name)) return;
         GetProjectViewModel(item.Project).Name = name.Trim();
@@ -379,8 +461,10 @@ public sealed partial class MainViewModel : ObservableObject
         return name;
     }
 
-    private static bool CanEditGroup(string? group) =>
-        !string.IsNullOrWhiteSpace(group) && !WorkspaceSettings.IsDefaultGroup(group) && !ProjectGroups.Same(group, ProjectGroups.Archived);
+    /// <summary>Your own groups other than Personal and Work (another ProJict's groups are its owner's).</summary>
+    private bool CanEditGroup(string? group) =>
+        !string.IsNullOrWhiteSpace(group) && !WorkspaceSettings.IsDefaultGroup(group) && !ProjectGroups.Same(group, ProjectGroups.Archived) &&
+        State.Settings.Groups.Any(g => ProjectGroups.Same(g, group));
 
     [RelayCommand(CanExecute = nameof(CanEditGroup))]
     private void RenameGroup(string? group)
@@ -440,6 +524,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void MoveToGroup(Project project, string group)
     {
+        if (NotYours(project)) return;
         var current = string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group;
         if (ProjectGroups.Same(current, group)) return;
         project.Group = group;
@@ -468,6 +553,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>Opens the target project and adds the source's categories it lacks (undoable there).</summary>
     public void CopyCategories(Project target, Project source)
     {
+        if (NotYours(target)) return;
         var added = OpenProject(target).CopyCategoriesFrom(source);
         State.StatusText = added switch
         {

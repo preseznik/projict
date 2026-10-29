@@ -116,6 +116,9 @@ public sealed class AgentTools : IMcpToolHost
 
     public IReadOnlyList<McpTool> Tools => _tools;
 
+    /// <summary>Your own projects: projects shown from another ProJict aren't open to agents.</summary>
+    private List<Project> LocalProjects => _state.Projects.Where(p => p.Remote == null).ToList();
+
     public string Instructions =>
         "ProJict is the user's to-do list app: projects contain categories, categories contain items (with sub-items, tags such as BUG or ADD, " +
         "attachments, discussions, and a state: todo, in_progress or done). To work on items: current_project (or list_projects) to find the project, " +
@@ -124,6 +127,7 @@ public sealed class AgentTools : IMcpToolHost
         "once, call set_label first. Everything you complete waits for the user's review, so only complete what you really finished; use " +
         "update_item with state todo if you stop. Ask the user questions or report progress with add_comment, and check list_comments for their " +
         "answers. File problems you notice with add_item, and put documentation or reports for people in a note with write_doc. " +
+        "Items with a gitHubIssue stand for that GitHub issue: mention \"Fixes #<number>\" in the commit or pull request that resolves one. " +
         "Ids (items and comments) may be shortened to their first 8 characters.";
 
     public void SessionStarted(McpSession session)
@@ -132,7 +136,7 @@ public sealed class AgentTools : IMcpToolHost
         _dispatcher.InvokeAsync(() =>
         {
             _state.StatusText = $"{session.AgentName} connected to ProJict.";
-            _main.Agents.Connected(session, ProjectMatcher.ForFolder(_state.Projects, session.WorkingDirectory)?.Project);
+            _main.Agents.Connected(session, ProjectMatcher.ForFolder(LocalProjects, session.WorkingDirectory)?.Project);
         });
     }
 
@@ -161,13 +165,13 @@ public sealed class AgentTools : IMcpToolHost
 
     private string ListProjects(McpSession session, Args args, List<Attachment> files) => Json(new JsonObject
     {
-        ["projects"] = new JsonArray(_state.Projects.Select(p => (JsonNode)ProjectJson(p)).ToArray()),
+        ["projects"] = new JsonArray(LocalProjects.Select(p => (JsonNode)ProjectJson(p)).ToArray()),
     });
 
     private string CurrentProject(McpSession session, Args args, List<Attachment> files)
     {
         var folder = args.String("path") ?? session.WorkingDirectory;
-        var match = ProjectMatcher.ForFolder(_state.Projects, folder)
+        var match = ProjectMatcher.ForFolder(LocalProjects, folder)
             ?? throw new McpToolException($"No project matches {folder ?? "your working directory"}. Projects: {ProjectNames()}. " +
                                           "Pass \"project\" to the other tools, or ask the user to set the project's local repo folder in ProJict (Details tab).");
         var json = ProjectJson(match.Project);
@@ -186,7 +190,7 @@ public sealed class AgentTools : IMcpToolHost
     {
         var label = args.String("label")?.Trim();
         if (label is { Length: > 40 }) throw new McpToolException("Keep the label short (40 characters at most).");
-        var held = _state.Projects.SelectMany(p => p.Walk().Select(l => (Project: p, l.Item))).Where(x => Holds(session, x.Item)).ToList();
+        var held = LocalProjects.SelectMany(p => p.Walk().Select(l => (Project: p, l.Item))).Where(x => Holds(session, x.Item)).ToList();
         session.Label = string.IsNullOrEmpty(label) ? null : label;
         // Items it has checked out move to its new name, so it keeps them.
         foreach (var (project, item) in held) Edit(project, item.Id, i => i.ClaimedBy = session.AgentName);
@@ -611,12 +615,12 @@ public sealed class AgentTools : IMcpToolHost
         if (args.String("project") is { } name)
         {
             name = name.Trim();
-            return _state.Projects.FirstOrDefault(p => p.Id.ToString().Equals(name, StringComparison.OrdinalIgnoreCase))
-                   ?? _state.Projects.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || p.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
-                   ?? _state.Projects.FirstOrDefault(p => GitHubReleases.MatchKey(p.Name) == GitHubReleases.MatchKey(name))
+            return LocalProjects.FirstOrDefault(p => p.Id.ToString().Equals(name, StringComparison.OrdinalIgnoreCase))
+                   ?? LocalProjects.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || p.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
+                   ?? LocalProjects.FirstOrDefault(p => GitHubReleases.MatchKey(p.Name) == GitHubReleases.MatchKey(name))
                    ?? throw new McpToolException($"No project \"{name}\". Projects: {ProjectNames()}.");
         }
-        return ProjectMatcher.ForFolder(_state.Projects, session.WorkingDirectory)?.Project
+        return ProjectMatcher.ForFolder(LocalProjects, session.WorkingDirectory)?.Project
                ?? throw new McpToolException($"Say which project with \"project\" (no project matches your working directory). Projects: {ProjectNames()}.");
     }
 
@@ -632,7 +636,7 @@ public sealed class AgentTools : IMcpToolHost
         id = id.Trim();
         var exact = Guid.TryParse(id, out var guid);
         if (!exact && id.Length < 6) throw new McpToolException("Give the item id (at least its first 6 characters).");
-        var found = _state.Projects
+        var found = LocalProjects
             .SelectMany(p => p.Walk().Select(l => (Project: p, Loc: l)))
             .Where(x => exact ? x.Loc.Item.Id == guid : x.Loc.Item.Id.ToString().StartsWith(id, StringComparison.OrdinalIgnoreCase))
             .Take(2)
@@ -697,6 +701,14 @@ public sealed class AgentTools : IMcpToolHost
         if (item.ClaimedBy != null && item.State == ItemState.InProgress) json["checkedOutBy"] = item.ClaimedBy;
         if (item.NeedsReview) json["needsReview"] = true;
         if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
+        if (item.Issue is { } issue)
+        {
+            var link = new JsonObject { ["number"] = issue.Number, ["url"] = issue.Url };
+            if (issue.Closed) link["closed"] = true;
+            if (issue.PullRequests is { Count: > 0 } pulls)
+                link["pullRequests"] = new JsonArray(pulls.Select(p => (JsonNode)$"#{p.Number} {p.State.ToString().ToLowerInvariant()}: {p.Title}").ToArray());
+            json["gitHubIssue"] = link;
+        }
         if (details)
         {
             if (item.Activity is { Count: > 0 } log)
@@ -754,7 +766,7 @@ public sealed class AgentTools : IMcpToolHost
     private JsonArray Paths(List<Attachment>? attachments) =>
         new((attachments ?? []).Select(a => (JsonNode)_state.Store.AttachmentPath(a)).ToArray());
 
-    private string ProjectNames() => string.Join(", ", _state.Projects.Where(p => !p.IsInbox).Select(p => p.Name));
+    private string ProjectNames() => string.Join(", ", LocalProjects.Where(p => !p.IsInbox).Select(p => p.Name));
 
     // The agent reads this text as is, so letters like č or ž stay readable instead of becoming č.
     private static readonly JsonSerializerOptions ReadableJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };

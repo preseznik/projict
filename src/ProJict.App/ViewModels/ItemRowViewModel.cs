@@ -33,6 +33,11 @@ public sealed partial class ItemRowViewModel : ObservableObject
         set
         {
             if (value == Item.Text) return;
+            if (!Owner.CanEdit)
+            {
+                OnPropertyChanged();
+                return;
+            }
             Owner.BeforeTextChange();
             Item.Text = value;
             Owner.Touch();
@@ -88,6 +93,10 @@ public sealed partial class ItemRowViewModel : ObservableObject
     public IReadOnlyList<ContributorViewModel> Contributors => Item.Contributors()
         .Select(c => new ContributorViewModel(c, ContributorToolTip(c.Name), Owner.ShowWorkedByCommand)).ToList();
     public int CommentCount => Item.Comments.CountComments();
+    /// <summary>Someone else commented since you last opened the discussion: a red dot on its chip.</summary>
+    public bool HasUnreadComments => Owner.HasUnread(Item.Id, Item.Comments);
+    /// <summary>Waiting for you: an unread comment or work to review (folded sections show a red dot for it).</summary>
+    public bool NeedsAttention => Item.NeedsReview || HasUnreadComments;
     /// <summary>The second line shows when there is something on it.</summary>
     public bool HasDetails => Item.Activity is { Count: > 0 } || CommentCount > 0;
 
@@ -109,6 +118,19 @@ public sealed partial class ItemRowViewModel : ObservableObject
         ? Owner.Project.Releases.FirstOrDefault(r => r.Id == id) is { IsBaseline: false } r ? r.Version : null
         : null;
 
+    /// <summary>The item's GitHub issue and the pull requests that mention it, as chips that open them on GitHub.</summary>
+    public IReadOnlyList<GitHubLinkViewModel> GitHubLinks => Item.Issue is { } issue
+        ?
+        [
+            new($"#{issue.Number}", issue.Closed ? GitHubLinkViewModel.Purple : GitHubLinkViewModel.Green, issue.Url,
+                $"GitHub issue #{issue.Number}{(issue.Author != null ? " by " + issue.Author : "")}{(issue.Closed ? ", closed" : "")}: {issue.Title}\nClick to open it on GitHub"),
+            .. (issue.PullRequests ?? []).Select(p => new GitHubLinkViewModel($"PR #{p.Number}",
+                p.State switch { PullRequestState.Merged => GitHubLinkViewModel.Purple, PullRequestState.Closed => GitHubLinkViewModel.Red, _ => GitHubLinkViewModel.Green },
+                p.Url, $"Pull request #{p.Number}, {p.State.ToString().ToLowerInvariant()}: {p.Title}\nClick to open it on GitHub")),
+        ]
+        : [];
+    public bool HasGitHubLinks => Item.Issue != null;
+
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private bool _isVisible = true;
     [ObservableProperty] private bool _isDropTarget;
@@ -117,6 +139,12 @@ public sealed partial class ItemRowViewModel : ObservableObject
     {
         _attachments = null;
         OnPropertyChanged(string.Empty);
+    }
+
+    public void RefreshUnread()
+    {
+        OnPropertyChanged(nameof(HasUnreadComments));
+        OnPropertyChanged(nameof(NeedsAttention));
     }
 
     public override string ToString() => Item.DisplayText();
@@ -139,6 +167,27 @@ public sealed partial class ItemRowViewModel : ObservableObject
     [RelayCommand] private void SetPriority(Priority priority) => Owner.SetPriority(this, priority);
     [RelayCommand] private void ReleaseClaim() => Owner.ReleaseClaim(this);
     [RelayCommand] private void OpenDiscussion() => Owner.OpenDiscussion(Item.Id);
+}
+
+/// <summary>A chip for a GitHub issue or pull request; its dot has GitHub's colour for the state (open, closed or merged).</summary>
+public sealed record GitHubLinkViewModel(string Text, System.Windows.Media.Brush Dot, string Url, string ToolTip)
+{
+    public static readonly System.Windows.Media.Brush Green = Frozen(0x2D, 0xA4, 0x4E);
+    public static readonly System.Windows.Media.Brush Purple = Frozen(0x82, 0x50, 0xDF);
+    public static readonly System.Windows.Media.Brush Red = Frozen(0xCF, 0x22, 0x2E);
+
+    public System.Windows.Input.ICommand Open => new RelayCommand(() =>
+    {
+        try { Services.ShellLauncher.OpenUrl(Url); }
+        catch (Exception) { /* no browser registered: nothing to do */ }
+    });
+
+    private static System.Windows.Media.Brush Frozen(byte r, byte g, byte b)
+    {
+        var brush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 }
 
 /// <summary>A chip under an item naming someone who worked on it.</summary>

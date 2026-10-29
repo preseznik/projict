@@ -50,11 +50,13 @@ public static class ActivityFeed
                 FeedEvent ForItem(DateTime at, FeedKind kind, string who, bool agent, string action, string? detail = null) =>
                     new(at, kind, who, agent, action, subject, detail) { Project = project, Category = loc.Category, Item = item };
 
-                // An agent's own history already says it added or finished the item.
-                if (!item.Imported && !FromImport(item.CreatedAt) && !activity.Any(a => a.Agent && a.Text.StartsWith("Added", StringComparison.Ordinal)))
+                // An agent's own history already says it added or finished the item, and GitHub's that the issue was closed.
+                if (item.Issue is { } issue)
+                    events.Add(ForItem(item.CreatedAt, FeedKind.Added, issue.Author ?? GitHubIssues.Signature, false, $"opened issue #{issue.Number} on GitHub"));
+                else if (!item.Imported && !FromImport(item.CreatedAt) && !activity.Any(a => a.Agent && a.Text.StartsWith("Added", StringComparison.Ordinal)))
                     events.Add(ForItem(item.CreatedAt, FeedKind.Added, userName, false, "added"));
                 if (item.IsDone && item.DoneAt is { } doneAt && !item.Imported && !FromImport(doneAt) &&
-                    !activity.Any(a => a.Agent && IsDoneEntry(a) && Math.Abs((a.At - doneAt).TotalMinutes) < 2))
+                    !activity.Any(a => (a.Agent || a.By == GitHubIssues.Signature) && IsDoneEntry(a) && Math.Abs((a.At - doneAt).TotalMinutes) < 2))
                     events.Add(ForItem(doneAt, FeedKind.Done, userName, false, "finished"));
                 foreach (var entry in activity)
                 {
@@ -87,7 +89,8 @@ public static class ActivityFeed
     }
 
     private static bool IsDoneEntry(ActivityEntry entry) =>
-        entry.Text.StartsWith("Done", StringComparison.Ordinal) || entry.Text.StartsWith("Marked it done", StringComparison.Ordinal);
+        entry.Text.StartsWith("Done", StringComparison.Ordinal) || entry.Text.StartsWith("Marked it done", StringComparison.Ordinal) ||
+        entry.Text.StartsWith("Closed the issue", StringComparison.Ordinal);
 
     /// <summary>
     /// A history entry as it reads after the name: "Checked it out: reproducing" → "checked it out" with the detail

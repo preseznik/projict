@@ -27,6 +27,7 @@ public sealed partial class AttachmentViewModel
         _attachCopy = attachCopy;
         Model = model;
         Path = owner.AttachmentPath(model);
+        owner.EnsureFile(model);
     }
 
     /// <summary>A picture ProJict can show (and mark up) itself; other files open in their usual app.</summary>

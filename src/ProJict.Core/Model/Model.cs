@@ -37,6 +37,8 @@ public sealed class TodoItem
     public List<ActivityEntry>? Activity { get; set; }
     /// <summary>Discussion threads about the item; null while there are none.</summary>
     public List<Comment>? Comments { get; set; }
+    /// <summary>The GitHub issue the item was imported from; null for items of your own.</summary>
+    public IssueLink? Issue { get; set; }
 
     [JsonIgnore] public bool IsDone => State == ItemState.Done;
     [JsonIgnore] public bool HasAttachments => Attachments is { Count: > 0 };
@@ -60,6 +62,7 @@ public sealed class TodoItem
         copy.Attachments = Attachments?.ToList();
         copy.Activity = Activity?.ToList();
         copy.Comments = Comments?.Select(c => c.DeepClone()).ToList();
+        copy.Issue = Issue?.DeepClone();
         return copy;
     }
 
@@ -98,6 +101,76 @@ public sealed class Comment
         copy.Replies = Replies?.Select(r => r.DeepClone()).ToList();
         return copy;
     }
+}
+
+/// <summary>A GitHub issue an item stands for, as last seen on GitHub.</summary>
+public sealed class IssueLink
+{
+    public int Number { get; set; }
+    public string Url { get; set; } = "";
+    /// <summary>Who opened the issue on GitHub.</summary>
+    public string? Author { get; set; }
+    /// <summary>The issue's title; while the item's text still equals it, a new title on GitHub renames the item.</summary>
+    public string Title { get; set; } = "";
+    /// <summary>Closed on GitHub when last synced; a change on GitHub since then is applied to the item.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Closed { get; set; }
+    /// <summary>Pull requests that mention the issue (e.g. "Fixes #12"); null while there are none.</summary>
+    public List<PullRequestLink>? PullRequests { get; set; }
+
+    public IssueLink DeepClone()
+    {
+        var copy = (IssueLink)MemberwiseClone();
+        copy.PullRequests = PullRequests?.Select(p => p.Clone()).ToList();
+        return copy;
+    }
+}
+
+public enum PullRequestState { Open, Merged, Closed }
+
+public sealed class PullRequestLink
+{
+    public int Number { get; set; }
+    public string Url { get; set; } = "";
+    public string Title { get; set; } = "";
+    public PullRequestState State { get; set; }
+
+    public PullRequestLink Clone() => (PullRequestLink)MemberwiseClone();
+}
+
+/// <summary>A project's link to its GitHub repository's issues (Details › GitHub issues).</summary>
+public sealed class IssueSync
+{
+    /// <summary>Sync when ProJict starts (turned on by the first import).</summary>
+    public bool Enabled { get; set; } = true;
+    /// <summary>Finishing an item here closes its issue on GitHub (and reopening it reopens the issue); needs the GitHub CLI sign-in.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CloseOnGitHub { get; set; }
+    /// <summary>When the last sync started; the next one asks only for issues changed since.</summary>
+    public DateTime? SyncedAt { get; set; }
+    /// <summary>Issues imported so far, so one whose item you deleted doesn't come back.</summary>
+    public List<int> Imported { get; set; } = [];
+    /// <summary>What the last sync did or why it failed, shown under the button.</summary>
+    public string? LastResult { get; set; }
+
+    public IssueSync DeepClone()
+    {
+        var copy = (IssueSync)MemberwiseClone();
+        copy.Imported = [.. Imported];
+        return copy;
+    }
+}
+
+/// <summary>Where a project shown on a guest comes from, and what the guest may do in it.</summary>
+public sealed class RemoteOrigin
+{
+    /// <summary>Identifies the connection (the host's address).</summary>
+    public string HostKey { get; init; } = "";
+    /// <summary>Who shares it: the host's user name.</summary>
+    public string HostName { get; init; } = "";
+    public Sharing.GuestRole Role { get; set; }
+    /// <summary>False while the connection is down: the project is then read only.</summary>
+    public bool Connected { get; set; } = true;
 }
 
 /// <summary>A file attached to an item. ProJict keeps its own copy in the data folder (see ProjectStore.AttachmentPath).</summary>
@@ -200,6 +273,10 @@ public sealed class Project
     public List<ArchivedFile> ArchivedFiles { get; set; } = [];
     /// <summary>What GitHub said about the project's repository the last time ProJict asked (not part of undo).</summary>
     public GitHubReleaseInfo? GitHubRelease { get; set; }
+    /// <summary>Set once the repository's issues were imported; null for projects that don't use them.</summary>
+    public IssueSync? Issues { get; set; }
+    /// <summary>On a guest: the ProJict this project is shown from. Such projects live only in memory and are never saved here.</summary>
+    [JsonIgnore] public RemoteOrigin? Remote { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 
@@ -219,9 +296,15 @@ public sealed class Project
         Categories = [new Category { Name = "IDEAS" }],
     };
 
-    /// <summary>Replaces this project's content with a snapshot's (used by undo, keeps object identity).</summary>
-    public void RestoreFrom(Project snapshot)
+    /// <summary>
+    /// Replaces this project's content with a snapshot's (used by undo, keeps object identity). Issue links keep what
+    /// GitHub last said unless <paramref name="keepIssueLinks"/> is false (a guest taking the host's version).
+    /// </summary>
+    public void RestoreFrom(Project snapshot, bool keepIssueLinks = true)
     {
+        // Issue links say what GitHub said when last synced, which undo can't change: keep the current ones.
+        var seen = this.Walk().Select(l => l.Item.Issue).OfType<IssueLink>().GroupBy(i => i.Number).ToDictionary(g => g.Key, g => g.First());
+
         Name = snapshot.Name;
         Key = snapshot.Key;
         FilePrefix = snapshot.FilePrefix;
@@ -235,6 +318,11 @@ public sealed class Project
         Notes = snapshot.Notes;
         Releases = snapshot.Releases;
         ArchivedFiles = snapshot.ArchivedFiles;
+        if (keepIssueLinks)
+            foreach (var item in this.Walk().Select(l => l.Item).Where(i => i.Issue != null))
+                if (seen.TryGetValue(item.Issue!.Number, out var current)) item.Issue = current.DeepClone();
+        // With its items: undoing an import forgets it, so the next sync brings those issues back.
+        Issues = snapshot.Issues;
     }
 
     /// <summary>Keeps letters, digits, '.', '_' and '-' so the key is a valid file name.</summary>

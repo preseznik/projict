@@ -58,7 +58,7 @@
                                Cursor="SizeAll" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,8,0,0"
                                ToolTip="Drag to move · Ctrl+click to select for a prompt"
                                PreviewMouseLeftButtonDown="Grip_MouseDown" MouseMove="Grip_MouseMove" />
-                    <CheckBox Grid.Column="1" IsChecked="{Binding CheckState}" IsThreeState="False" Focusable="False"
+                    <CheckBox Grid.Column="1" IsChecked="{Binding CheckState}" IsThreeState="False" Focusable="False" IsEnabled="{Binding Owner.CanEdit}"
                               MinWidth="0" MinHeight="0" Padding="0" Margin="2,4,4,0" VerticalAlignment="Top"
                               ToolTip="Done (Ctrl+Enter) · in progress (Ctrl+I) · right-click to choose"
                               ContextMenuOpening="StateBox_ContextMenuOpening" />
@@ -79,11 +79,33 @@
                             <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" />
                         </Border>
                     </StackPanel>
-                    <TextBox x:Name="RowText" Grid.Column="3" Uid="RowText" Style="{StaticResource RowTextBox}"
+                    <TextBox x:Name="RowText" Grid.Column="3" Uid="RowText" Style="{StaticResource RowTextBox}" IsReadOnly="{Binding Owner.IsReadOnlyBoard}"
                              Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" Loaded="RowText_Loaded"
                              PreviewKeyDown="RowText_PreviewKeyDown" GotKeyboardFocus="RowText_GotFocus" LostKeyboardFocus="RowText_LostFocus"
                              ContextMenuOpening="RowText_ContextMenuOpening" />
                     <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Top" Margin="6,5,4,0">
+                        <!-- The GitHub issue it came from and pull requests that mention it; a click opens them on GitHub. -->
+                        <ItemsControl ItemsSource="{Binding GitHubLinks}" Focusable="False" VerticalAlignment="Top"
+                                      Visibility="{Binding HasGitHubLinks, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:GitHubLinkViewModel}">
+                                    <Button Style="{StaticResource SubtleButton}" Padding="0" Margin="0,0,4,0" Command="{Binding Open}"
+                                            ToolTip="{Binding ToolTip}" AutomationProperties.Name="{Binding Text}">
+                                        <Border Style="{StaticResource TagChip}" Background="{DynamicResource SubtleFillColorSecondaryBrush}" Margin="0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="7" Height="7" Fill="{Binding Dot}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                                <TextBlock Text="{Binding Text}" FontSize="11" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Border Style="{StaticResource TagChip}" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 Visibility="{Binding ClaimedBy, Converter={StaticResource EmptyToVis}}" ToolTip="{Binding ClaimToolTip}">
                             <StackPanel Orientation="Horizontal">
@@ -139,6 +161,8 @@
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Style="{StaticResource Icon}" Text="&#xE8BD;" FontSize="10" Margin="0,1,4,0" />
                                         <TextBlock Text="{Binding CommentCount}" FontSize="11" />
+                                        <Ellipse Style="{StaticResource UnreadDot}" Margin="5,0,0,0" ToolTip="New comments"
+                                                 Visibility="{Binding HasUnreadComments, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
                                 </Border>
                             </Button>
@@ -192,21 +216,32 @@
                                PreviewMouseLeftButtonDown="CategoryGrip_MouseDown" MouseMove="CategoryGrip_MouseMove" />
                     <Button x:Name="Chevron" Grid.Column="1" Style="{StaticResource SubtleIconButton}" FontSize="11" Padding="5,4"
                             Command="{Binding ToggleExpandedCommand}" AutomationProperties.Name="Collapse" Content="&#xE70D;" ToolTip="Collapse / expand" />
-                    <TextBox Grid.Column="2" Uid="CategoryName" Style="{StaticResource RowTextBox}" FontSize="15" FontWeight="SemiBold" TextWrapping="NoWrap"
-                             MinWidth="60" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
-                    <TextBox Grid.Column="3" Style="{StaticResource HoverHintTextBox}" FontSize="12" Tag="description…"
+                    <StackPanel Grid.Column="2" Orientation="Horizontal">
+                        <TextBox Uid="CategoryName" Style="{StaticResource RowTextBox}" FontSize="15" FontWeight="SemiBold" TextWrapping="NoWrap" IsReadOnly="{Binding Owner.IsReadOnlyBoard}"
+                                 MinWidth="30" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
+                        <TextBlock Text="{Binding OpenCountText}" FontSize="15" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"
+                                   Margin="2,0,4,0" ToolTip="Open items" />
+                    </StackPanel>
+                    <TextBox Grid.Column="3" Style="{StaticResource HoverHintTextBox}" FontSize="12" Tag="description…" IsReadOnly="{Binding Owner.IsReadOnlyBoard}"
                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                              Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
-                    <TextBlock Grid.Column="4" Text="{Binding CountsText}" Style="{StaticResource MutedText}" Margin="8,0" />
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="8,0">
+                        <Ellipse Style="{StaticResource UnreadDot}" Margin="0,0,6,0" ToolTip="Something in here waits for you: a new comment or work to review"
+                                 Visibility="{Binding ShowAttention, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding CountsText}" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
+                    </StackPanel>
                     <StackPanel Grid.Column="5" Orientation="Horizontal">
                         <Button Style="{StaticResource SubtleButton}" Command="{Binding OpenDiscussionCommand}" ToolTip="{Binding DiscussionToolTip}" AutomationProperties.Name="Discussion">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE8BD;" />
                                 <TextBlock Text="{Binding CommentCount}" FontSize="11" Margin="4,0,0,0" VerticalAlignment="Center"
                                            Visibility="{Binding CommentCount, Converter={StaticResource EmptyToVis}}" />
+                                <Ellipse Style="{StaticResource UnreadDot}" Margin="5,0,0,0"
+                                         Visibility="{Binding HasUnreadComments, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Button>
-                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE710;" AutomationProperties.Name="Add item" ToolTip="Add item" Click="AddItemButton_Click" />
+                        <Button Style="{StaticResource SubtleIconButton}" Content="&#xE710;" AutomationProperties.Name="Add item" ToolTip="Add item" Click="AddItemButton_Click"
+                                Visibility="{Binding Owner.CanAddItems, Converter={StaticResource BoolToVis}}" />
                         <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8C8;" AutomationProperties.Name="Copy category prompt" ToolTip="Copy this category's open items as an AI prompt" Command="{Binding CopyPromptCommand}" />
                         <Button Style="{StaticResource SubtleIconButton}" Content="&#xE712;" AutomationProperties.Name="More" ToolTip="More" Click="CategoryMore_Click" />
                     </StackPanel>
@@ -225,7 +260,7 @@
 
         <DataTemplate x:Key="AddItemTemplate" DataType="{x:Type vm:CategoryViewModel}">
             <!-- Pasting (Ctrl+V) or dropping a screenshot or files here adds the item with them attached. -->
-            <TextBox Uid="AddItem" Style="{StaticResource RowTextBox}" Margin="40,2,0,0"
+            <TextBox Uid="AddItem" Style="{StaticResource RowTextBox}" Margin="40,2,0,0" Visibility="{Binding Owner.CanAddItems, Converter={StaticResource BoolToVis}}"
                      Tag="Add item…  (Enter · prefix BUG: / ADD: to tag · paste or drop a screenshot to attach it)"
                      Text="{Binding NewItemText, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus"
                      PreviewKeyDown="AddItem_PreviewKeyDown" AllowDrop="True"
@@ -248,6 +283,8 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="12" />
                                 <TextBlock Text="{Binding DoneHeader}" Margin="6,0,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Ellipse Style="{StaticResource UnreadDot}" Margin="6,0,0,0" ToolTip="Something in here waits for you: a new comment or work to review"
+                                         Visibility="{Binding ShowDoneAttention, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </ToggleButton>
                         <ctl:OutlineItemsControl ItemsSource="{Binding DoneRows}" ItemTemplate="{StaticResource RowTemplate}" Focusable="False" Margin="0,2,0,0"
@@ -297,11 +334,16 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBox Style="{StaticResource RowTextBox}" FontSize="26" FontWeight="SemiBold" Padding="2,0" TextWrapping="NoWrap"
-                         Text="{Binding Name, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsInbox}" HorizontalAlignment="Left" MinWidth="200" />
+                         Text="{Binding Name, UpdateSourceTrigger=LostFocus}" IsReadOnly="{Binding IsTitleReadOnly}" HorizontalAlignment="Left" MinWidth="200" />
+                <!-- Another ProJict's project: whose it is and what you may do in it. -->
+                <StackPanel Orientation="Horizontal" Margin="4,2,0,0" Visibility="{Binding RemoteText, Converter={StaticResource EmptyToVis}}">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE72D;" FontSize="12" Margin="0,0,6,0" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                    <TextBlock Text="{Binding RemoteText}" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="2,6,0,0" Visibility="{Binding IsNotInbox, Converter={StaticResource BoolToVis}}">
                     <Ellipse Width="8" Height="8" Fill="{Binding Status, Converter={StaticResource StatusToBrush}}" Margin="0,0,8,0" />
-                    <ComboBox ItemsSource="{x:Static vm:ProjectViewModel.Statuses}" SelectedItem="{Binding Status}" Width="130" ToolTip="Status" />
-                    <ComboBox ItemsSource="{Binding Groups}" Text="{Binding Group, UpdateSourceTrigger=LostFocus}" IsEditable="True" Width="150" Margin="8,0,0,0" ToolTip="Group" />
+                    <ComboBox ItemsSource="{x:Static vm:ProjectViewModel.Statuses}" SelectedItem="{Binding Status}" Width="130" ToolTip="Status" IsEnabled="{Binding IsOwnProject}" />
+                    <ComboBox ItemsSource="{Binding Groups}" Text="{Binding Group, UpdateSourceTrigger=LostFocus}" IsEditable="True" Width="150" Margin="8,0,0,0" ToolTip="Group" IsEnabled="{Binding IsOwnProject}" />
                 </StackPanel>
                 <TextBlock Margin="2,6,0,0" Style="{StaticResource MutedText}" TextWrapping="Wrap"
                            Text="Ideas and loose notes. Promote an item to a project from its right-click menu."
@@ -467,7 +509,8 @@
                         <ListBox ItemsSource="{Binding Notes}" SelectedItem="{Binding SelectedNote}" DisplayMemberPath="Title" />
                     </DockPanel>
                     <DockPanel Grid.Column="1" Margin="12,0,0,0" Visibility="{Binding SelectedNote, Converter={StaticResource EmptyToVis}}">
-                        <TextBox DockPanel.Dock="Top" Text="{Binding SelectedNote.Title, UpdateSourceTrigger=PropertyChanged}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4" />
+                        <TextBox DockPanel.Dock="Top" Text="{Binding SelectedNote.Title, UpdateSourceTrigger=PropertyChanged}" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,4"
+                                 IsReadOnly="{Binding IsReadOnlyBoard}" />
                         <TextBlock DockPanel.Dock="Top" Text="{Binding SelectedNote.EditedText}" Style="{StaticResource MutedText}" FontSize="11" Margin="2,0,0,6"
                                    Visibility="{Binding SelectedNote.EditedText, Converter={StaticResource EmptyToVis}}" />
                         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
@@ -478,7 +521,7 @@
                             <ItemsControl ItemsSource="{Binding SelectedNote.Attachments}" ItemTemplate="{StaticResource AttachmentTemplate}"
                                           ItemsPanel="{StaticResource WrapItems}" Focusable="False" />
                         </DockPanel>
-                        <TextBox Text="{Binding SelectedNote.Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" AcceptsTab="True"
+                        <TextBox Text="{Binding SelectedNote.Text, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" AcceptsTab="True" IsReadOnly="{Binding IsReadOnlyBoard}"
                                  TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" FontFamily="{StaticResource MonoFont}" FontSize="13"
                                  VerticalContentAlignment="Top" />
                     </DockPanel>
@@ -557,7 +600,7 @@
 
             <!-- Details -->
             <TabItem Header="Details">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" IsEnabled="{Binding IsOwnProject}">
                     <Grid Margin="4,12,12,12" MaxWidth="820" HorizontalAlignment="Left">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="170" />
@@ -600,12 +643,26 @@
                         <TextBlock Grid.Row="2" Text="GitHub URL" />
                         <TextBox Grid.Row="2" Grid.Column="1" Margin="0,4" Text="{Binding GitHubUrl, UpdateSourceTrigger=LostFocus}" />
 
-                        <TextBlock Grid.Row="3" Text="Description" />
-                        <TextBox Grid.Row="3" Grid.Column="1" Margin="0,4" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                        <TextBlock Grid.Row="3" Text="GitHub issues" />
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="{Binding SyncIssuesText}" Command="{Binding SyncIssuesCommand}" />
+                                <CheckBox Content="Sync when ProJict starts" IsChecked="{Binding KeepIssuesInSync}" Margin="16,0,0,0" VerticalAlignment="Center"
+                                          Visibility="{Binding HasIssueSync, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                            <CheckBox Content="Close an issue on GitHub when I finish its item here, and reopen it when I reopen the item"
+                                      IsChecked="{Binding CloseIssuesOnGitHub}" Margin="0,8,0,0"
+                                      Visibility="{Binding HasIssueSync, Converter={StaticResource BoolToVis}}"
+                                      ToolTip="Needs the GitHub CLI sign-in (Settings › GitHub) with access to the repository. Items already finished get their issues closed too." />
+                            <TextBlock Text="{Binding IssueSyncText}" Margin="0,6,0,0" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="4" Text="Description" />
+                        <TextBox Grid.Row="4" Grid.Column="1" Margin="0,4" Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
                                  AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" VerticalContentAlignment="Top" />
 
-                        <TextBlock Grid.Row="4" Text="Prompt preamble" />
-                        <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,4">
+                        <TextBlock Grid.Row="5" Text="Prompt preamble" />
+                        <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,4">
                             <TextBox Text="{Binding PromptPreamble, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
                                      MinHeight="120" VerticalContentAlignment="Top" FontFamily="{StaticResource MonoFont}" FontSize="13" />
                             <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"

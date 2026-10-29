@@ -1,6 +1,16 @@
 # Changelog
 
-## 0.1.12 (2026-10-29)
+## 0.1.13 (2026-10-29)
+
+- **Sharing**: other people on your network can work in your projects live from their own ProJict. Turn it on under **Sharing** (the new button below the sidebar), create an invite with a role and the groups they'll see, and give them the code. They connect with your address and the code, and you let them in, deny or block them from a bar that appears. Their changes show on your board as they make them, and yours on theirs; when two people change different things at once, both changes are kept.
+- Roles: **Viewer**, **Commenter**, **Reporter** (adds items and comments, for testers or clients) and **Editor** (changes everything except a project's name, group, status and folder). Your ProJict checks every change against the role, and signs comments and history with the person's name. Change roles, block or remove people at any time.
+- Connections are encrypted, and ProJict remembers each host's fingerprint and refuses to connect if it changes. Badges show who has which project open.
+- **GitHub issues**: a project's Details tab can import its repository's open issues as items of a GITHUB category (labels bug and enhancement become BUG and ADD). Each item shows its issue number, and pull requests that mention the issue ("Fixes #12") show next to it, coloured by state. A click opens them on GitHub.
+- Issues stay in sync when ProJict starts or with **Sync now**: an issue closed or reopened on GitHub closes or reopens its item, and a new title renames it unless you changed the text. An item you delete isn't imported again.
+- Optionally, finishing an item closes its issue on GitHub and reopening it reopens the issue (needs the GitHub CLI sign-in from Settings › GitHub).
+- Search, the board filter and Copy prompt know the issue numbers, and AI agents see them too.
+- A category's name shows its number of open items in brackets, like "Done (7)" does for finished ones.
+- **Red dots** for what waits for you: on the discussion chip of an item or category with comments you haven't read, on a group heading whose discussion has new comments, on a folded category or folded Done list with an unread comment or an agent's work to review inside, and next to the project in the sidebar. Opening the discussion clears them. Comments from before this version count as read.
 
 - **Feed** (under Dashboard): a timeline of everything that happened across your projects. It shows items added and finished, AI agents' check-outs and resolutions, reviews, priority and tag changes, comments, releases, notes and new projects. Filter by project, what happened, who did it and period, or search. A click opens the item, discussion, release or note.
 - Pictures open in ProJict's own viewer, where you can mark them up: pen, highlighter, arrows, rectangles and ellipses in six colours. **Save copy** adds the marked-up picture as a new attachment; the original is never changed.

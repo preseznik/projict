@@ -22,6 +22,10 @@ public sealed class AppSettings
     public DateTime? LastUpdateCheck { get; set; }
     /// <summary>Release tag the user chose to skip; no reminder until a newer one appears.</summary>
     public string? SkippedVersion { get; set; }
+    /// <summary>When you last read each discussion (key: AppState.ReadKey), for the red unread dots.</summary>
+    public Dictionary<string, DateTime> DiscussionsRead { get; set; } = [];
+    /// <summary>Comments from before this count as read: set the first time ProJict marked unread comments.</summary>
+    public DateTime? UnreadSince { get; set; }
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProJict", "settings.json");

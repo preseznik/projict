@@ -1,0 +1,103 @@
+using System.Security.Cryptography;
+using System.Text;
+using ProJict.Core.Storage;
+
+namespace ProJict.Core.Sharing;
+
+/// <summary>Someone allowed to connect to this ProJict (Settings › Sharing).</summary>
+public sealed class GuestAccount
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = "";
+    public GuestRole Role { get; set; }
+    /// <summary>The groups whose projects the guest sees; null for all.</summary>
+    public List<string>? Groups { get; set; }
+    /// <summary>SHA-256 of the guest's secret token (the token itself is only on the guest's computer).</summary>
+    public string TokenHash { get; set; } = "";
+    public bool Blocked { get; set; }
+    /// <summary>The guest's computer name, as it said when joining.</summary>
+    public string? Device { get; set; }
+    public DateTime AddedAt { get; set; } = DateTime.Now;
+    public DateTime? LastSeen { get; set; }
+
+    public bool Sees(string group) => Groups == null || Groups.Contains(group, StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>A one-time code to give someone; whoever joins with it still needs your approval.</summary>
+public sealed class Invite
+{
+    public string Code { get; set; } = "";
+    public GuestRole Role { get; set; }
+    public List<string>? Groups { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime ExpiresAt { get; set; }
+
+    public bool IsValid(DateTime now) => now < ExpiresAt;
+}
+
+/// <summary>A ProJict this computer connected to as a guest.</summary>
+public sealed class KnownHost
+{
+    /// <summary>host:port as typed.</summary>
+    public string Address { get; set; } = "";
+    /// <summary>SHA-256 of the host's certificate, trusted on the first connection.</summary>
+    public string Fingerprint { get; set; } = "";
+    public string? HostName { get; set; }
+    public Guid GuestId { get; set; }
+    /// <summary>The secret token, protected for this Windows user (DPAPI).</summary>
+    public string? ProtectedToken { get; set; }
+    public bool AutoConnect { get; set; } = true;
+}
+
+/// <summary>%LocalAppData%\ProJict\sharing.json: this computer's side of sharing, as host and as guest.</summary>
+public sealed class SharingData
+{
+    public const int DefaultPort = 47613;
+
+    /// <summary>Let other ProJict apps on the network connect.</summary>
+    public bool Enabled { get; set; }
+    public int Port { get; set; } = DefaultPort;
+    /// <summary>The host certificate (PKCS#12), protected for this Windows user; made the first time sharing is on.</summary>
+    public string? ProtectedCertificate { get; set; }
+    public List<GuestAccount> Guests { get; set; } = [];
+    public List<Invite> Invites { get; set; } = [];
+    public List<KnownHost> Hosts { get; set; } = [];
+
+    public static string DefaultPath => Path.Combine(Path.GetDirectoryName(AppSettings.DefaultPath)!, "sharing.json");
+
+    public static SharingData Load(string path)
+    {
+        try { return File.Exists(path) ? Json.Deserialize<SharingData>(File.ReadAllText(path)) ?? new() : new(); }
+        catch (Exception) { return new(); }
+    }
+
+    public void Save(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        AtomicFile.WriteAllText(path, Json.Serialize(this));
+    }
+
+    /// <summary>Easy to read out: no 0/O or 1/I.</summary>
+    private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    /// <summary>"K7QF-2MPD": 40 random bits, good for one use within its lifetime and only with your approval.</summary>
+    public static string NewInviteCode()
+    {
+        var chars = new char[9];
+        for (var i = 0; i < chars.Length; i++) chars[i] = i == 4 ? '-' : CodeAlphabet[RandomNumberGenerator.GetInt32(CodeAlphabet.Length)];
+        return new string(chars);
+    }
+
+    public static string NormalizeCode(string code) =>
+        new string(code.ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray()) is { Length: 8 } c ? $"{c[..4]}-{c[4..]}" : code.Trim().ToUpperInvariant();
+
+    public static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    public static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    /// <summary>"3F:A2:…" — SHA-256 of a certificate, in pairs, for people to compare.</summary>
+    public static string Fingerprint(byte[] certificate) => string.Join(":", SHA256.HashData(certificate).Select(b => b.ToString("X2")));
+
+    /// <summary>The first few pairs, enough to compare by eye.</summary>
+    public static string ShortFingerprint(string fingerprint) => string.Join(":", fingerprint.Split(':').Take(8));
+}

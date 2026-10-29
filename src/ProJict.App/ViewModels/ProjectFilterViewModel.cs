@@ -11,8 +11,11 @@ public static class ProjectGroups
 {
     public const string Archived = WorkspaceSettings.ArchivedGroup;
 
-    public static string Of(Project project) => project.Status == ProjectStatus.Archived ? Archived
-        : string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group.Trim();
+    public static string Of(Project project) => project.Remote is { } remote ? $"{remote.HostName}'s {OwnGroup(project)}"
+        : project.Status == ProjectStatus.Archived ? Archived
+        : OwnGroup(project);
+
+    private static string OwnGroup(Project project) => string.IsNullOrWhiteSpace(project.Group) ? WorkspaceSettings.PersonalGroup : project.Group.Trim();
 
     public static bool Same(string? a, string? b) => string.Equals(a?.Trim(), b?.Trim(), StringComparison.OrdinalIgnoreCase);
 
@@ -20,6 +23,7 @@ public static class ProjectGroups
     public static int Order(Project project, WorkspaceSettings settings)
     {
         if (project.Status == ProjectStatus.Archived) return int.MaxValue;
+        if (project.Remote != null) return 2000; // other ProJicts' projects after your own
         var group = Of(project);
         var i = settings.Groups.FindIndex(g => string.Equals(g, group, StringComparison.OrdinalIgnoreCase));
         return i < 0 ? 1000 : i;

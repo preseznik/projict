@@ -171,6 +171,14 @@ public sealed class ProjectStore
         return attachment;
     }
 
+    /// <summary>Stores a file a guest sent for an attachment it made (its id and name come from the guest).</summary>
+    public void StoreAttachment(Attachment attachment, byte[] content)
+    {
+        var target = AttachmentPath(attachment);
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        File.WriteAllBytes(target, content);
+    }
+
     /// <summary>Stores new content (e.g. a pasted screenshot) as an attachment.</summary>
     public Attachment WriteAttachment(string fileName, byte[] content)
     {
@@ -217,7 +225,7 @@ public sealed class ProjectStore
         return removed;
     }
 
-    private static string SafeFileName(string name)
+    public static string SafeFileName(string name)
     {
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray()).Trim().TrimEnd('.');

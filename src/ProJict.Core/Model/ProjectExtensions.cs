@@ -87,8 +87,11 @@ public static class ProjectExtensions
         string.IsNullOrEmpty(item.Tag) ? item.Text : $"{item.Tag}: {item.Text}";
 
     /// <summary>What the filter and search look in: the item's text plus the names of its attached files.</summary>
-    public static string SearchText(this TodoItem item) =>
-        item.HasAttachments ? $"{item.DisplayText()} {string.Join(" ", item.Attachments!.Select(a => a.FileName))}" : item.DisplayText();
+    public static string SearchText(this TodoItem item)
+    {
+        var text = item.HasAttachments ? $"{item.DisplayText()} {string.Join(" ", item.Attachments!.Select(a => a.FileName))}" : item.DisplayText();
+        return item.Issue is { } issue ? $"{text} #{issue.Number}" : text;
+    }
 
     /// <summary>Files attached to the project's items and notes.</summary>
     public static IEnumerable<Attachment> Attachments(this Project project) =>

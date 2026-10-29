@@ -10,6 +10,7 @@ using ProJict.Core.Export;
 using ProJict.Core.Features;
 using ProJict.Core.Import;
 using ProJict.Core.Model;
+using ProJict.Core.Sharing;
 using ProJict.Core.Storage;
 
 namespace ProJict.App.ViewModels;
@@ -112,9 +113,9 @@ public sealed partial class ProjectViewModel : ObservableObject
         get => Project.Group;
         set
         {
-            if (ProjectGroups.Same(value, ProjectGroups.Archived))
+            if (ProjectGroups.Same(value, ProjectGroups.Archived) || Project.Remote != null)
             {
-                RefreshGroups(); // "Archived" is the status, not a group
+                RefreshGroups(); // "Archived" is the status, not a group; another ProJict's project keeps its group
                 return;
             }
             // A name typed here that isn't a group yet becomes one (before the sidebar rebuilds).
@@ -133,6 +134,11 @@ public sealed partial class ProjectViewModel : ObservableObject
         set
         {
             if (value == Project.Status) return;
+            if (Project.Remote != null)
+            {
+                OnPropertyChanged();
+                return;
+            }
             Project.Status = value;
             Touch();
             OnPropertyChanged();
@@ -141,7 +147,15 @@ public sealed partial class ProjectViewModel : ObservableObject
     }
 
     public string? RepoPath { get => Project.RepoPath; set => SetDetail(Project.RepoPath, value, v => Project.RepoPath = Blank(v)); }
-    public string? GitHubUrl { get => Project.GitHubUrl; set => SetDetail(Project.GitHubUrl, value, v => Project.GitHubUrl = Blank(v)); }
+    public string? GitHubUrl
+    {
+        get => Project.GitHubUrl;
+        set
+        {
+            SetDetail(Project.GitHubUrl, value, v => Project.GitHubUrl = Blank(v));
+            RefreshIssueSync();
+        }
+    }
     public string? PromptPreamble { get => Project.PromptPreamble; set => SetDetail(Project.PromptPreamble, value, v => Project.PromptPreamble = Blank(v)); }
     public string? Description { get => Project.Description; set => SetDetail(Project.Description, value, v => Project.Description = Blank(v)); }
 
@@ -152,6 +166,11 @@ public sealed partial class ProjectViewModel : ObservableObject
     private void SetDetail(string? current, string? value, Action<string?> apply, bool listChanged = false, [CallerMemberName] string? property = null)
     {
         if (current == value) return;
+        if (Project.Remote != null)
+        {
+            OnPropertyChanged(property); // another ProJict's details are its owner's
+            return;
+        }
         apply(value);
         Touch();
         OnPropertyChanged(property);
@@ -160,7 +179,11 @@ public sealed partial class ProjectViewModel : ObservableObject
     }
 
     /// <summary>After the GitHub check linked this project to a repository.</summary>
-    public void RefreshGitHubLink() => OnPropertyChanged(nameof(GitHubUrl));
+    public void RefreshGitHubLink()
+    {
+        OnPropertyChanged(nameof(GitHubUrl));
+        RefreshIssueSync();
+    }
 
     /// <summary>After groups were added, renamed or deleted elsewhere.</summary>
     public void RefreshGroups()
@@ -173,6 +196,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     {
         foreach (var p in new[] { nameof(Name), nameof(Key), nameof(FilePrefix), nameof(Group), nameof(Status), nameof(RepoPath), nameof(GitHubUrl), nameof(PromptPreamble), nameof(Description) })
             OnPropertyChanged(p);
+        RefreshIssueSync();
     }
 
     // ───────────── Board state ─────────────
@@ -403,6 +427,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     /// <summary>Called before a text field changes; the first change after focusing records one undo step.</summary>
     public void BeforeTextChange()
     {
+        if (!CanEdit) return;
         if (_textEditOpen) return;
         Push(_undo, Json.Serialize(Project));
         _redo.Clear();
@@ -481,8 +506,9 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     // ───────────── Structural edits ─────────────
 
-    private void Mutate(Action change, IEnumerable<CategoryViewModel?> affected, Guid? focus = null, int caret = -1)
+    private void Mutate(Action change, IEnumerable<CategoryViewModel?> affected, Guid? focus = null, int caret = -1, EditKind kind = EditKind.Edit)
     {
+        if (Refused(kind)) return;
         var hadFocus = _focusedItemId;
         Checkpoint();
         change();
@@ -501,7 +527,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     {
         var item = TxtListParser.ParseLine(text);
         if (item == null) return;
-        Mutate(() => category.Model.Items.Add(item), [category]);
+        Mutate(() => category.Model.Items.Add(item), [category], kind: EditKind.Add);
         RefreshTagFilters();
     }
 
@@ -530,7 +556,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         var item = TxtListParser.ParseLine(category.NewItemText) ?? new TodoItem();
         item.Attachments = added;
         category.NewItemText = "";
-        Mutate(() => category.Model.Items.Add(item), [category], item.Id);
+        Mutate(() => category.Model.Items.Add(item), [category], item.Id, kind: EditKind.Add);
         RefreshTagFilters();
         _state.StatusText = added.Count == 1 ? $"Added an item with {added[0].FileName}." : $"Added an item with {added.Count} files.";
     }
@@ -819,7 +845,13 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     // ───────────── Attachments ─────────────
 
-    public string AttachmentPath(Attachment attachment) => _state.Store.AttachmentPath(attachment);
+    public string AttachmentPath(Attachment attachment) => _state.AttachmentPath(Project, attachment);
+
+    /// <summary>Another ProJict's attachment: fetched from it the first time it's shown.</summary>
+    public void EnsureFile(Attachment attachment)
+    {
+        if (Project.Remote != null) Main.Guest.Fetch(Project, attachment);
+    }
 
     public void BrowseAttachments(ItemRowViewModel row)
     {
@@ -1014,8 +1046,9 @@ public sealed partial class ProjectViewModel : ObservableObject
     /// A change from outside the board (an AI agent, the discussion panel): one undo step, the affected categories
     /// redrawn, and the cursor put back where it was if you were typing in the board (redrawn rows lose focus).
     /// </summary>
-    private void MutateKeepingCursor(Action change, IEnumerable<CategoryViewModel?> affected, bool rebuildAll = false)
+    private void MutateKeepingCursor(Action change, IEnumerable<CategoryViewModel?> affected, bool rebuildAll = false, EditKind kind = EditKind.Edit)
     {
+        if (Refused(kind)) return;
         var focus = _focusedItemId;
         var caret = focus is { } focused ? CaretOf?.Invoke(focused) : null;
         Checkpoint();
@@ -1052,6 +1085,163 @@ public sealed partial class ProjectViewModel : ObservableObject
         MutateKeepingCursor(() => Project.Categories.Add(new Category { Name = categoryName!.Trim(), Items = [item] }), [], rebuildAll: true);
     }
 
+    /// <summary>
+    /// A change from GitHub (an issue sync): one undo step if <paramref name="change"/> says it changed anything, the
+    /// board redrawn and the cursor put back. Returns whether anything changed.
+    /// </summary>
+    public bool ExternalChange(Func<bool> change)
+    {
+        var snapshot = Json.Serialize(Project);
+        var focus = _focusedItemId;
+        var caret = focus is { } focused ? CaretOf?.Invoke(focused) : null;
+        if (!change()) return false;
+        Push(_undo, snapshot);
+        _redo.Clear();
+        _textEditOpen = false;
+        NotifyUndo();
+        Touch();
+        RebuildAll();
+        if (focus is { } id && caret is { } at && Project.Find(id) != null) FocusRequested?.Invoke(id, at);
+        return true;
+    }
+
+    // ───────────── Shared from another ProJict ─────────────
+
+    /// <summary>False on a guest for another ProJict's project when your role doesn't allow changing it (or it's disconnected).</summary>
+    public bool CanEdit => Project.Remote is not { } r || (r.Connected && GuestAccess.CanEdit(r.Role));
+    public bool CanAddItems => Project.Remote is not { } r || (r.Connected && GuestAccess.CanAddItems(r.Role));
+    public bool CanComment => Project.Remote is not { } r || (r.Connected && GuestAccess.CanComment(r.Role));
+    public bool IsReadOnlyBoard => !CanEdit;
+    public bool IsRemote => Project.Remote != null;
+    public bool IsTitleReadOnly => Project.IsInbox || Project.Remote != null;
+    public bool IsOwnProject => Project.Remote == null;
+
+    /// <summary>"Shared by Sam · you're an editor", under the title of another ProJict's project.</summary>
+    public string? RemoteText => Project.Remote is { } r
+        ? $"Shared by {r.HostName} · you're {(r.Role == GuestRole.Editor ? "an" : "a")} {r.Role.ToString().ToLowerInvariant()}" + (r.Connected ? "" : " · not connected, reconnecting…")
+        : null;
+
+    /// <summary>On a guest, whether your role allows the change; the status bar says why not.</summary>
+    private bool Refused(EditKind kind)
+    {
+        if (Project.Remote is not { } remote) return false;
+        var allowed = remote.Connected && kind switch
+        {
+            EditKind.Add => GuestAccess.CanAddItems(remote.Role),
+            EditKind.Comment => GuestAccess.CanComment(remote.Role),
+            _ => GuestAccess.CanEdit(remote.Role),
+        };
+        if (!allowed)
+            _state.StatusText = !remote.Connected
+                ? $"Not connected to {remote.HostName}'s ProJict: nothing can change until it reconnects."
+                : $"As a {remote.Role.ToString().ToLowerInvariant()} in {remote.HostName}'s ProJict you can't {(kind == EditKind.Add ? "add items" : kind == EditKind.Comment ? "comment" : "change this")}.";
+        return !allowed;
+    }
+
+    /// <summary>After the role or the connection changed: what may be edited.</summary>
+    public void RefreshAccess()
+    {
+        foreach (var p in new[] { nameof(CanEdit), nameof(CanAddItems), nameof(CanComment), nameof(IsReadOnlyBoard), nameof(IsRemote), nameof(IsOwnProject), nameof(RemoteText), nameof(IsTitleReadOnly) })
+            OnPropertyChanged(p);
+        // Rows and categories bind Owner.CanEdit: redraw them.
+        foreach (var category in Categories) category.Refresh();
+    }
+
+    /// <summary>
+    /// On a guest: the host's version replaces this one. The undo history goes with it, since undoing would undo other
+    /// people's work.
+    /// </summary>
+    public void ReplaceFromHost(Project snapshot)
+    {
+        var focus = _focusedItemId;
+        var caret = focus is { } focused ? CaretOf?.Invoke(focused) : null;
+        Project.RestoreFrom(snapshot, keepIssueLinks: false);
+        _undo.Clear();
+        _redo.Clear();
+        _textEditOpen = false;
+        NotifyUndo();
+        RebuildAll();
+        ReloadSideLists();
+        NotifyDetails();
+        _state.NotifyProjectChanged(Project);
+        if (focus is { } id && caret is { } at && Project.Find(id) != null) FocusRequested?.Invoke(id, at);
+    }
+
+    /// <summary>On the host: a guest's change (already checked and merged), as one undo step.</summary>
+    public void ApplyFromGuest(Project accepted)
+    {
+        var focus = _focusedItemId;
+        var caret = focus is { } focused ? CaretOf?.Invoke(focused) : null;
+        Push(_undo, Json.Serialize(Project));
+        _redo.Clear();
+        _textEditOpen = false;
+        NotifyUndo();
+        Project.RestoreFrom(accepted);
+        RebuildAll();
+        ReloadSideLists();
+        NotifyDetails();
+        Touch();
+        if (focus is { } id && caret is { } at && Project.Find(id) != null) FocusRequested?.Invoke(id, at);
+    }
+
+    // ───────────── GitHub issues ─────────────
+
+    private string? _issueSyncMessage;
+
+    public bool CanSyncIssues => Project.Remote == null && GitHubReleases.ParseRepo(Project.GitHubUrl) != null && !Main.Issues.IsSyncing(Project);
+    public bool HasIssueSync => Project.Issues != null;
+    public string SyncIssuesText => Project.Issues == null ? "Import issues" : "Sync now";
+
+    public string IssueSyncText => Main.Issues.IsSyncing(Project) ? "Asking GitHub…"
+        : _issueSyncMessage ?? Project.Issues?.LastResult
+          ?? (GitHubReleases.ParseRepo(Project.GitHubUrl) != null
+              ? "Brings the repository's open issues in as items of a GITHUB category. Pull requests that mention an issue (\"Fixes #12\") show on its item."
+              : "Enter the project's GitHub URL above to import its issues.");
+
+    /// <summary>Sync when ProJict starts.</summary>
+    public bool KeepIssuesInSync
+    {
+        get => Project.Issues?.Enabled == true;
+        set
+        {
+            if (Project.Issues is not { } sync || sync.Enabled == value) return;
+            sync.Enabled = value;
+            Touch();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Finishing an item closes its issue on GitHub, reopening it reopens the issue.</summary>
+    public bool CloseIssuesOnGitHub
+    {
+        get => Project.Issues?.CloseOnGitHub == true;
+        set
+        {
+            if (Project.Issues is not { } sync || sync.CloseOnGitHub == value) return;
+            sync.CloseOnGitHub = value;
+            Touch();
+            OnPropertyChanged();
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanSyncIssues))]
+    private async Task SyncIssues()
+    {
+        _issueSyncMessage = null;
+        var result = await Main.Issues.SyncAsync(Project, manual: true);
+        // A first import that failed has nowhere to keep its result.
+        if (Project.Issues == null) _issueSyncMessage = result;
+        RefreshIssueSync();
+    }
+
+    /// <summary>After a sync started or finished, or the GitHub link changed.</summary>
+    public void RefreshIssueSync()
+    {
+        foreach (var p in new[] { nameof(CanSyncIssues), nameof(HasIssueSync), nameof(SyncIssuesText), nameof(IssueSyncText), nameof(KeepIssuesInSync), nameof(CloseIssuesOnGitHub) })
+            OnPropertyChanged(p);
+        SyncIssuesCommand.NotifyCanExecuteChanged();
+    }
+
     // ───────────── Discussions ─────────────
 
     /// <summary>Opens the discussion of an item or category of this project in the side panel.</summary>
@@ -1061,6 +1251,8 @@ public sealed partial class ProjectViewModel : ObservableObject
     public List<Comment>? CommentsOf(Guid targetId) =>
         Project.Find(targetId)?.Item.Comments ?? Project.Categories.FirstOrDefault(c => c.Id == targetId)?.Comments;
 
+    public bool HasUnread(Guid targetId, List<Comment>? comments) => _state.HasUnread(AppState.ReadKey(targetId), comments);
+
     public bool HasDiscussionTarget(Guid targetId) => Project.Find(targetId) != null || Project.Categories.Any(c => c.Id == targetId);
 
     /// <summary>Posts on an item or category (a new thread or a reply); one undo step.</summary>
@@ -1069,9 +1261,9 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (replyTo is { } parent && CommentsOf(targetId).Find(parent) == null)
             throw new InvalidOperationException("The comment to reply to isn't there any more.");
         if (Project.Find(targetId) is { } loc)
-            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Post(loc.Item.Comments, comment, replyTo), [CategoryFor(loc.Category)]);
+            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Post(loc.Item.Comments, comment, replyTo), [CategoryFor(loc.Category)], kind: EditKind.Comment);
         else if (Project.Categories.FirstOrDefault(c => c.Id == targetId) is { } category)
-            MutateKeepingCursor(() => category.Comments = Discussions.Post(category.Comments, comment, replyTo), [CategoryFor(category)]);
+            MutateKeepingCursor(() => category.Comments = Discussions.Post(category.Comments, comment, replyTo), [CategoryFor(category)], kind: EditKind.Comment);
         else
             throw new InvalidOperationException("The item or category isn't there any more.");
     }
@@ -1079,9 +1271,9 @@ public sealed partial class ProjectViewModel : ObservableObject
     public void RemoveComment(Guid targetId, Guid commentId)
     {
         if (Project.Find(targetId) is { } loc)
-            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Remove(loc.Item.Comments, commentId), [CategoryFor(loc.Category)]);
+            MutateKeepingCursor(() => loc.Item.Comments = Discussions.Remove(loc.Item.Comments, commentId), [CategoryFor(loc.Category)], kind: EditKind.Comment);
         else if (Project.Categories.FirstOrDefault(c => c.Id == targetId) is { } category)
-            MutateKeepingCursor(() => category.Comments = Discussions.Remove(category.Comments, commentId), [CategoryFor(category)]);
+            MutateKeepingCursor(() => category.Comments = Discussions.Remove(category.Comments, commentId), [CategoryFor(category)], kind: EditKind.Comment);
     }
 
     // ───────────── Worked on by ─────────────
@@ -1317,6 +1509,9 @@ public sealed record PriorityFilterOption(string Label, Priority? AtLeast, bool 
 }
 
 /// <summary>A choice in the board's state filter; State is null for "All states".</summary>
+/// <summary>What a change does, for what a guest's role allows: change existing things, add items, or comment.</summary>
+public enum EditKind { Edit, Add, Comment }
+
 public sealed record StateFilterOption(string Label, ItemState? State, bool ReviewOnly = false)
 {
     public override string ToString() => Label;
@@ -1350,7 +1545,7 @@ public sealed partial class NoteViewModel(ProjectViewModel owner, NoteDoc model)
         get => Model.Title;
         set
         {
-            if (value == Model.Title) return;
+            if (value == Model.Title || !owner.CanEdit) return;
             Model.Title = value;
             Signed();
             OnPropertyChanged();
@@ -1362,7 +1557,7 @@ public sealed partial class NoteViewModel(ProjectViewModel owner, NoteDoc model)
         get => Model.Text;
         set
         {
-            if (value == Model.Text) return;
+            if (value == Model.Text || !owner.CanEdit) return;
             Model.Text = value;
             Signed();
             OnPropertyChanged();

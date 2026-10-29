@@ -25,7 +25,7 @@ public sealed partial class CategoryViewModel : ObservableObject
         get => Model.Name;
         set
         {
-            if (value == Model.Name) return;
+            if (value == Model.Name || !Owner.CanEdit) return;
             Owner.BeforeTextChange();
             Model.Name = value;
             Owner.Touch();
@@ -39,7 +39,7 @@ public sealed partial class CategoryViewModel : ObservableObject
         set
         {
             var v = string.IsNullOrWhiteSpace(value) ? null : value;
-            if (v == Model.Description) return;
+            if (v == Model.Description || !Owner.CanEdit) return;
             Owner.BeforeTextChange();
             Model.Description = v;
             Owner.Touch();
@@ -56,12 +56,14 @@ public sealed partial class CategoryViewModel : ObservableObject
             Model.Collapsed = !value;
             Owner.Touch();
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowAttention));
             Owner.OnCategoryExpandedChanged();
         }
     }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowDoneRows))]
+    [NotifyPropertyChangedFor(nameof(ShowDoneAttention))]
     private bool _isDoneExpanded;
 
     [ObservableProperty] private bool _isVisible = true;
@@ -72,6 +74,8 @@ public sealed partial class CategoryViewModel : ObservableObject
     public int DoneCount => Model.Items.Count(i => i.IsDone);
     public string CountsText => DoneCount == 0 ? $"{OpenCount} open" : $"{OpenCount} open · {DoneCount} done";
     public string DoneHeader => $"Done ({DoneCount})";
+    /// <summary>"(3)" after the category's name: its open items, like "Done (5)" counts the finished ones.</summary>
+    public string OpenCountText => $"({OpenCount})";
     public bool HasDone => DoneCount > 0;
 
     /// <summary>Done rows show when expanded, in side-by-side layout, or when a filter matches some of them.</summary>
@@ -98,11 +102,30 @@ public sealed partial class CategoryViewModel : ObservableObject
         OnPropertyChanged(nameof(DoneCount));
         OnPropertyChanged(nameof(CountsText));
         OnPropertyChanged(nameof(DoneHeader));
+        OnPropertyChanged(nameof(OpenCountText));
         OnPropertyChanged(nameof(HasDone));
         OnPropertyChanged(nameof(ShowDoneRows));
         OnPropertyChanged(nameof(CommentCount));
         OnPropertyChanged(nameof(DiscussionToolTip));
+        OnPropertyChanged(nameof(HasUnreadComments));
+        OnPropertyChanged(nameof(ShowAttention));
+        OnPropertyChanged(nameof(ShowDoneAttention));
     }
+
+    /// <summary>After you read a discussion somewhere: its red dots go.</summary>
+    public void RefreshUnread()
+    {
+        foreach (var row in AllRows) row.RefreshUnread();
+        OnPropertyChanged(nameof(HasUnreadComments));
+        OnPropertyChanged(nameof(ShowAttention));
+        OnPropertyChanged(nameof(ShowDoneAttention));
+    }
+
+    public bool HasUnreadComments => Owner.HasUnread(Model.Id, Model.Comments);
+    /// <summary>Folded, with something inside waiting for you (an unread comment, work to review): a red dot on the header.</summary>
+    public bool ShowAttention => !IsExpanded && AllRows.Any(r => r.NeedsAttention);
+    /// <summary>The same for the folded Done list (agents' finished work waits there for review).</summary>
+    public bool ShowDoneAttention => !ShowDoneRows && DoneRows.Any(r => r.NeedsAttention);
 
     public int CommentCount => Model.Comments.CountComments();
     public string DiscussionToolTip => CommentCount switch
@@ -112,7 +135,11 @@ public sealed partial class CategoryViewModel : ObservableObject
         var n => $"Discussion: {n} comments",
     };
 
-    public void RaiseShowDone() => OnPropertyChanged(nameof(ShowDoneRows));
+    public void RaiseShowDone()
+    {
+        OnPropertyChanged(nameof(ShowDoneRows));
+        OnPropertyChanged(nameof(ShowDoneAttention));
+    }
 
     private void AddRows(List<ItemRowViewModel> rows, TodoItem item, TodoItem? parent, int depth, bool done)
     {

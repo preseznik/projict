@@ -54,6 +54,9 @@ public sealed partial class DiscussionViewModel : ObservableObject
     private string _newText = "";
 
     public bool IsEmpty => Threads.Count == 0 && !IsGone;
+
+    /// <summary>False in another ProJict's project where your role doesn't include discussions.</summary>
+    public bool CanWrite => !IsGone && (Project?.Remote is not { } remote || (remote.Connected && ProJict.Core.Sharing.GuestAccess.CanComment(remote.Role)));
     public string SignedAs => $"Posting as {_state.UserName}";
 
     private Project? Project => Target.Kind == DiscussionKind.Group ? null : _state.Projects.FirstOrDefault(p => p.Id == Target.ProjectId);
@@ -88,6 +91,8 @@ public sealed partial class DiscussionViewModel : ObservableObject
         CommentViewModel.SyncList(Threads, comments, this, 0);
         Count = comments.CountComments();
         OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(CanWrite));
+        _state.MarkRead(Target.Kind == DiscussionKind.Group ? AppState.ReadKey(Target.Group!) : AppState.ReadKey(Target.TargetId), comments);
     }
 
     private bool CanPost() => NewText.Trim().Length > 0 && !IsGone;

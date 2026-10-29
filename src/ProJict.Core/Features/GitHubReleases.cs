@@ -114,9 +114,12 @@ public static partial class GitHubReleases
     }
 
     /// <summary>The response body, or null for 404; throws HttpRequestException with a readable message otherwise.</summary>
-    private static async Task<string?> GetAsync(HttpClient http, string url, string? token, CancellationToken ct)
+    internal static async Task<string?> GetAsync(HttpClient http, string url, string? token, CancellationToken ct) =>
+        await SendAsync(http, new HttpRequestMessage(HttpMethod.Get, url), token, ct).ConfigureAwait(false);
+
+    internal static async Task<string?> SendAsync(HttpClient http, HttpRequestMessage request, string? token, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var _ = request;
         request.Headers.UserAgent.Add(new ProductInfoHeaderValue("ProJict", "1"));
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
         if (token != null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

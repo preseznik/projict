@@ -73,7 +73,7 @@
                 </StackPanel>
             </DockPanel>
 
-            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0">
+            <StackPanel DockPanel.Dock="Bottom" Margin="0,10,0,0" Visibility="{Binding CanWrite, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <TextBox x:Name="NewThread" Text="{Binding NewText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
                              MinHeight="64" MaxHeight="180" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="New comment"

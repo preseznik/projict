@@ -51,7 +51,7 @@ public sealed class GitHubService(AppState state)
             var released = new List<string>();
             var failed = new List<string>();
             var checkedCount = 0;
-            foreach (var project in state.Projects.Where(p => !p.IsInbox).ToList())
+            foreach (var project in state.Projects.Where(p => !p.IsInbox && p.Remote == null).ToList())
             {
                 if (GitHubReleases.ParseRepo(project.GitHubUrl) is not { } repo)
                 {
@@ -100,7 +100,7 @@ public sealed class GitHubService(AppState state)
     private static string Count(int n, string noun) => n == 1 ? $"1 {noun}" : $"{n} {noun}s";
 
     /// <summary>The token of the GitHub CLI's sign-in, or null when gh is missing or signed out. It is never stored.</summary>
-    private static string? GitHubCliToken()
+    internal static string? GitHubCliToken()
     {
         try
         {

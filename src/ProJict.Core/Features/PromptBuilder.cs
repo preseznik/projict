@@ -47,6 +47,8 @@ public static class PromptBuilder
         sb.Append('\n');
         foreach (var line in lines.Skip(1).Where(l => l.Trim().Length > 0))
             sb.Append(indent).Append("  ").Append(line.Trim()).Append('\n');
+        if (item.Issue is { } issue)
+            sb.Append(indent).Append("  GitHub issue #").Append(issue.Number).Append(": ").Append(issue.Url).Append('\n');
         if (attachmentPath != null)
             foreach (var attachment in item.Attachments ?? [])
                 sb.Append(indent).Append("  Attached: ").Append(attachmentPath(attachment)).Append('\n');

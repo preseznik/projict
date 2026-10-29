@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ProJict.Core.Export;
@@ -25,9 +26,16 @@ public sealed partial class AppState : ObservableObject
         Workspace = store.Load();
         _saveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         _saveTimer.Tick += (_, _) => SaveNow();
+        if (AppSettings.UnreadSince == null)
+        {
+            AppSettings.UnreadSince = DateTime.Now;
+            SaveAppSettings();
+        }
     }
 
     public ProjectStore Store { get; }
+    /// <summary>False in tests: nothing is written to this computer's settings (or sharing) files.</summary>
+    public bool PersistsSettings => _persistAppSettings;
     public AppSettings AppSettings { get; }
     public Workspace Workspace { get; }
     public WorkspaceSettings Settings => Workspace.Settings;
@@ -56,6 +64,40 @@ public sealed partial class AppState : ObservableObject
         GroupCommentsChanged?.Invoke(group);
     }
 
+    // ───────────── Unread comments ─────────────
+
+    /// <summary>Raised after you read a discussion, so its red dots go.</summary>
+    public event Action? ReadMarksChanged;
+
+    public static string ReadKey(Guid targetId) => targetId.ToString("N");
+    public static string ReadKey(string group) => "group:" + group.Trim().ToLowerInvariant();
+
+    /// <summary>True when someone else commented since you last read the discussion.</summary>
+    public bool HasUnread(string key, List<Comment>? comments)
+    {
+        if (comments is not { Count: > 0 }) return false;
+        var since = AppSettings.DiscussionsRead.TryGetValue(key, out var read) ? read : DateTime.MinValue;
+        if (AppSettings.UnreadSince is { } start && start > since) since = start;
+        var me = UserName;
+        return comments.Walk().Any(e => !e.Comment.Deleted && e.Comment.At > since && !string.Equals(e.Comment.By, me, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>The discussion is open in front of you: everything in it counts as read.</summary>
+    public void MarkRead(string key, List<Comment>? comments)
+    {
+        if (!HasUnread(key, comments)) return;
+        // A comment stamped by another computer's clock may be a little ahead of this one.
+        var newest = comments.Walk().Max(e => e.Comment.At);
+        AppSettings.DiscussionsRead[key] = newest > DateTime.Now ? newest : DateTime.Now;
+        SaveAppSettings();
+        ReadMarksChanged?.Invoke();
+    }
+
+    /// <summary>Something in the project waits for you: a comment you haven't read, or work an agent finished.</summary>
+    public bool NeedsAttention(Project project) =>
+        project.Walk().Any(l => l.Item.NeedsReview || HasUnread(ReadKey(l.Item.Id), l.Item.Comments)) ||
+        project.Categories.Any(c => HasUnread(ReadKey(c.Id), c.Comments));
+
     /// <summary>Raised after any edit to a project (sidebar counts, dashboard).</summary>
     public event Action<Project>? ProjectChanged;
 
@@ -68,9 +110,49 @@ public sealed partial class AppState : ObservableObject
     public void MarkDirty(Project project, bool touch = true)
     {
         if (touch) project.UpdatedAt = DateTime.Now;
+        if (project.Remote != null)
+        {
+            // Another ProJict's project: the change goes there, nothing is saved here.
+            RemoteProjectChanged?.Invoke(project);
+            ProjectChanged?.Invoke(project);
+            return;
+        }
         _dirty.Add(project);
         RestartTimer();
         ProjectChanged?.Invoke(project);
+    }
+
+    // ───────────── Projects shared from another ProJict ─────────────
+
+    /// <summary>A project shown from another ProJict changed here (sent to it by the guest connection).</summary>
+    public event Action<Project>? RemoteProjectChanged;
+
+    /// <summary>Where pictures and files of other ProJicts' projects are kept once fetched.</summary>
+    public string RemoteCacheRoot => _persistAppSettings
+        ? Path.Combine(Path.GetDirectoryName(AppSettings.DefaultPath)!, "remote")
+        : Path.Combine(Store.DataRoot, ".remote-cache");
+
+    /// <summary>The local file of an attachment: in the data folder, or for another ProJict's project in the cache (null until fetched).</summary>
+    public string AttachmentPath(Project? project, Attachment attachment)
+    {
+        if (project?.Remote is not { } remote) return Store.AttachmentPath(attachment);
+        var cached = Path.Combine(RemoteCacheRoot, ProjectStore.SafeFileName(remote.HostKey), attachment.Id.ToString("N"), ProjectStore.SafeFileName(attachment.FileName));
+        // Files you add to such a project are copied into your own data folder first, then sent.
+        var own = Store.AttachmentPath(attachment);
+        return !File.Exists(cached) && File.Exists(own) ? own : cached;
+    }
+
+    /// <summary>Shows a project shared by another ProJict (kept in memory only).</summary>
+    public void AddRemoteProject(Project project)
+    {
+        Workspace.Projects.Add(project);
+        NotifyListChanged();
+    }
+
+    public void RemoveRemoteProject(Project project)
+    {
+        if (project.Remote == null || !Workspace.Projects.Remove(project)) return;
+        NotifyListChanged();
     }
 
     public void MarkSettingsDirty()
@@ -80,6 +162,9 @@ public sealed partial class AppState : ObservableObject
     }
 
     public void NotifyListChanged() => ProjectListChanged?.Invoke();
+
+    /// <summary>A project changed without anything to save here (another ProJict's version arrived).</summary>
+    public void NotifyProjectChanged(Project project) => ProjectChanged?.Invoke(project);
 
     public void NotifyReplaced(Project project)
     {

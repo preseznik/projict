@@ -99,6 +99,9 @@ public partial class App : Application
         MainVm.Updates.StartPeriodicChecks();
         if (MainVm.GitHub.HasWork)
             _ = MainVm.GitHub.RefreshAsync(force: false);
+        _ = MainVm.Issues.SyncAllAsync();
+        if (MainVm.Sharing.Data.Enabled) MainVm.Host.Start();
+        MainVm.Guest.ConnectKnownHosts();
     }
 
     /// <summary>
@@ -210,6 +213,7 @@ public partial class App : Application
         catch (Exception) { }
         State?.SaveAppSettings();
         _agents?.Dispose();
+        if (MainVm != null) MainVm.Host.Stop();
         _hotkey?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();
