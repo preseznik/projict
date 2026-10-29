@@ -64,7 +64,7 @@ public partial class ProjectView : UserControl
     /// <summary>The toolbar's width with labels and the filter box at its narrowest, and the space around it in this view.</summary>
     private double _fullToolbarWidth, _toolbarChrome, _offeredWidth;
 
-    private TextBlock[] ToolbarLabels => [ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
+    private TextBlock[] ToolbarLabels => [PriorityLabel, ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
 
     /// <summary>
     /// Fits the toolbar and header to the width this view is offered (less with the discussion panel open): the toolbar
@@ -79,9 +79,12 @@ public partial class ProjectView : UserControl
             var compact = _fullToolbarWidth > 0 && constraint.Width < _fullToolbarWidth + _toolbarChrome;
             var labels = compact ? Visibility.Collapsed : Visibility.Visible;
             foreach (var label in ToolbarLabels.Where(l => l.Visibility != labels)) label.Visibility = labels;
-            // Compact also narrows the filters a little, so the buttons on the right fit next to the discussion panel.
-            TagFilterBox.Width = StateFilterBox.Width = compact ? 104 : 130;
-            Toolbar.ColumnDefinitions[0].MinWidth = compact ? 110 : 140;
+            // Compact also narrows the filters and gaps a little, so the buttons on the right fit next to the discussion panel.
+            TagFilterBox.Width = StateFilterBox.Width = compact ? 98 : 130;
+            Toolbar.ColumnDefinitions[0].MinWidth = compact ? 100 : 140;
+            PriorityChevron.Visibility = labels;
+            ShowDoneToggle.Margin = new Thickness(compact ? 4 : 12, 0, 0, 0);
+            ToolbarRight.Margin = new Thickness(compact ? 4 : 12, 0, 0, 0);
             // Leaves room for the title and the status and group boxes under it.
             HeaderButtons.MaxWidth = Math.Clamp(constraint.Width - 340, 180, 560);
         }
@@ -94,6 +97,44 @@ public partial class ProjectView : UserControl
         _fullToolbarWidth = Toolbar.ColumnDefinitions[0].MinWidth + ToolbarMiddle.DesiredSize.Width + ToolbarRight.DesiredSize.Width;
         _toolbarChrome = 2 * Toolbar.TranslatePoint(default, this).X;
         if (_offeredWidth > 0 && _offeredWidth < _fullToolbarWidth + _toolbarChrome) InvalidateMeasure();
+    }
+
+    // ───────────── Priority ─────────────
+
+    /// <summary>The toolbar's Priority menu: sort the board by priority, and show only items of some priority.</summary>
+    private void PriorityButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm is not { } vm) return;
+        var menu = new ContextMenu { PlacementTarget = PriorityButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        menu.Items.Add(new MenuItem
+        {
+            Header = "Sort by priority", IsChecked = vm.SortByPriority,
+            Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => vm.SortByPriority = !vm.SortByPriority),
+        });
+        menu.Items.Add(new Separator());
+        foreach (var option in ProjectViewModel.PriorityFilters)
+            menu.Items.Add(new MenuItem
+            {
+                Header = option.Label, IsChecked = vm.PriorityFilter == option,
+                Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => vm.PriorityFilter = option),
+            });
+        menu.IsOpen = true;
+    }
+
+    /// <summary>The priority choices for one item (its chip and its right-click menu).</summary>
+    private static IEnumerable<MenuItem> PriorityItems(ItemRowViewModel row) =>
+        ProjectViewModel.PriorityChoices.Select((p, i) => new MenuItem
+        {
+            Header = p.ToString(), IsChecked = row.Priority == p, InputGestureText = $"Alt+{i + 1}",
+            Command = row.SetPriorityCommand, CommandParameter = p,
+        }).Append(new MenuItem { Header = "None", IsChecked = !row.HasPriority, InputGestureText = "Alt+0", Command = row.SetPriorityCommand, CommandParameter = Core.Model.Priority.None });
+
+    private void PriorityChip_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ItemRowViewModel row } chip) return;
+        var menu = new ContextMenu { PlacementTarget = chip, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        foreach (var item in PriorityItems(row)) menu.Items.Add(item);
+        menu.IsOpen = true;
     }
 
     private void FilterBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -212,6 +253,15 @@ public partial class ProjectView : UserControl
             case Key.I when mods == ModifierKeys.Control:
                 vm.SetState(row, row.IsInProgress ? Core.Model.ItemState.Todo : Core.Model.ItemState.InProgress);
                 break;
+            case Key.D0 or Key.NumPad0 when mods == ModifierKeys.Alt:
+                vm.SetPriority(row, Core.Model.Priority.None);
+                break;
+            case >= Key.D1 and <= Key.D4 when mods == ModifierKeys.Alt:
+                vm.SetPriority(row, ProjectViewModel.PriorityChoices[key - Key.D1]);
+                break;
+            case >= Key.NumPad1 and <= Key.NumPad4 when mods == ModifierKeys.Alt:
+                vm.SetPriority(row, ProjectViewModel.PriorityChoices[key - Key.NumPad1]);
+                break;
             case Key.V when mods == ModifierKeys.Control && ClipboardAttachments.HasAttachment():
                 vm.PasteAttachments(row);
                 break;
@@ -260,6 +310,10 @@ public partial class ProjectView : UserControl
         menu.Items.Add(Item("Add sub-item", row.AddChildCommand));
         menu.Items.Add(Item("Attach files…", row.AttachCommand));
         if (ClipboardAttachments.HasAttachment()) menu.Items.Add(Item("Paste as attachment", row.PasteAttachmentsCommand, gesture: "Ctrl+V"));
+
+        var priority = new MenuItem { Header = "Priority" };
+        foreach (var item in PriorityItems(row)) priority.Items.Add(item);
+        menu.Items.Add(priority);
 
         var tags = new MenuItem { Header = "Tag" };
         foreach (var tag in ProjectViewModel.TagChoices)
@@ -326,7 +380,8 @@ public partial class ProjectView : UserControl
     private void CategoryMore_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CategoryViewModel category } button) return;
-        var menu = new ContextMenu { PlacementTarget = button };
+        // The menu would take the icon font from the "…" button and show its text as boxes.
+        var menu = new ContextMenu { PlacementTarget = button, FontFamily = FontFamily };
         menu.Items.Add(new MenuItem { Header = "Move up", Command = category.MoveUpCommand });
         menu.Items.Add(new MenuItem { Header = "Move down", Command = category.MoveDownCommand });
         menu.Items.Add(new MenuItem { Header = category.IsDoneExpanded ? "Hide done" : "Show done", Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => category.IsDoneExpanded = !category.IsDoneExpanded) });

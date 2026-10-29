@@ -61,10 +61,23 @@
                               MinWidth="0" MinHeight="0" Padding="0" Margin="2,4,4,0" VerticalAlignment="Top"
                               ToolTip="Done (Ctrl+Enter) · in progress (Ctrl+I) · right-click to choose"
                               ContextMenuOpening="StateBox_ContextMenuOpening" />
-                    <Border Grid.Column="2" Style="{StaticResource TagChip}" Background="{Binding Tag, Converter={StaticResource TagToBrush}}"
-                            Visibility="{Binding HasTag, Converter={StaticResource BoolToVis}}" VerticalAlignment="Top" Margin="0,6,4,0">
-                        <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" />
-                    </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">
+                        <!-- Priority: an outlined chip (tags are filled), a click picks another. -->
+                        <Button Style="{StaticResource SubtleButton}" Padding="0" Margin="0,5,4,0" VerticalAlignment="Top" Click="PriorityChip_Click"
+                                ToolTip="{Binding PriorityToolTip}" AutomationProperties.Name="Priority"
+                                Visibility="{Binding HasPriority, Converter={StaticResource BoolToVis}}">
+                            <Border CornerRadius="4" BorderThickness="1" Padding="5,0,6,1" BorderBrush="{Binding Priority, Converter={StaticResource PriorityToBrush}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" Fill="{Binding Priority, Converter={StaticResource PriorityToBrush}}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Priority}" FontSize="10.5" FontWeight="SemiBold" Margin="4,0,0,0" />
+                                </StackPanel>
+                            </Border>
+                        </Button>
+                        <Border Style="{StaticResource TagChip}" Background="{Binding Tag, Converter={StaticResource TagToBrush}}"
+                                Visibility="{Binding HasTag, Converter={StaticResource BoolToVis}}" VerticalAlignment="Top" Margin="0,6,4,0">
+                            <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" />
+                        </Border>
+                    </StackPanel>
                     <TextBox x:Name="RowText" Grid.Column="3" Uid="RowText" Style="{StaticResource RowTextBox}"
                              Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
                              PreviewKeyDown="RowText_PreviewKeyDown" GotKeyboardFocus="RowText_GotFocus" LostKeyboardFocus="RowText_LostFocus"
@@ -336,7 +349,25 @@
                             <ComboBox x:Name="TagFilterBox" ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" Width="130" Margin="8,0,0,0" ToolTip="Filter by tag" />
                             <ComboBox x:Name="StateFilterBox" ItemsSource="{x:Static vm:ProjectViewModel.StateFilters}" SelectedItem="{Binding StateFilter}" DisplayMemberPath="Label" Width="130" Margin="8,0,0,0"
                                       AutomationProperties.Name="Filter by state" ToolTip="Show only to do, in progress or done items" />
-                            <ToggleButton Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
+                            <Button x:Name="PriorityButton" Style="{StaticResource SubtleButton}" Margin="8,0,0,0" Click="PriorityButton_Click"
+                                    AutomationProperties.Name="Priority" ToolTip="Sort the board by priority, or show only items of some priority">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#xE8CB;">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsPriorityViewActive}" Value="True">
+                                                        <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock x:Name="PriorityLabel" Text="{Binding PriorityButtonText}" Margin="6,0,0,0" />
+                                    <TextBlock x:Name="PriorityChevron" Style="{StaticResource Icon}" Text="&#xE70D;" FontSize="9" Margin="6,1,0,0" />
+                                </StackPanel>
+                            </Button>
+                            <ToggleButton x:Name="ShowDoneToggle" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
                                 <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" /><TextBlock x:Name="ShowDoneLabel" Text="Show done" Margin="6,0,0,0" /></StackPanel>
                             </ToggleButton>
                             <ToggleButton Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Side by side" IsChecked="{Binding SideBySide}" Margin="4,0,0,0" ToolTip="TODO and DONE columns side by side">

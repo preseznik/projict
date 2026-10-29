@@ -25,6 +25,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 | Tab / Shift+Tab | make it a sub-item / move it back out |
 | Ctrl+Enter | mark done / not done |
 | Ctrl+I | mark in progress |
+| Alt+1 … Alt+4 / Alt+0 | priority urgent … low / no priority |
 | Alt+↑ / Alt+↓ | move the item up or down |
 | Ctrl+Shift+Del | delete the item |
 | Ctrl+Z / Ctrl+Y | undo / redo |
@@ -36,6 +37,8 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
 Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done.
+
+Give an item a priority (urgent, high, medium or low) from its right-click menu or with Alt+1 to Alt+4. The **Priority** button above the board sorts open items by priority and can show only items of some priority (e.g. high and up). Sorting only changes what you see: your own order stays and is what exports use. While the board is sorted, items can't be dragged or moved.
 
 ## Text files
 

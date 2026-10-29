@@ -4,6 +4,9 @@ namespace ProJict.Core.Model;
 
 public enum ItemState { Todo, InProgress, Done }
 
+/// <summary>How pressing an item is; None (the default) means not set.</summary>
+public enum Priority { None, Low, Medium, High, Urgent }
+
 public enum ProjectStatus { Idea, Active, Paused, Released, Archived }
 
 public sealed class TodoItem
@@ -13,6 +16,9 @@ public sealed class TodoItem
     /// <summary>Prefix such as BUG / ADD / ISSUES, kept verbatim so exports round-trip ("BUG: text").</summary>
     public string? Tag { get; set; }
     public ItemState State { get; set; }
+    /// <summary>Left out of the JSON while not set.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public Priority Priority { get; set; }
     public List<TodoItem> Children { get; set; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? DoneAt { get; set; }

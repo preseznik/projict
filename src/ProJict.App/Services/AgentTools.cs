@@ -51,6 +51,8 @@ public sealed class AgentTools : IMcpToolHost
                 ("tag", "string", "Only items with this tag, e.g. BUG.", false),
                 ("category", "string", "Only this category.", false),
                 ("query", "string", "Words that must all appear in the item text or attachment names.", false),
+                ("priority", "enum:urgent|high|medium|low|none", "Only items at least this pressing (low = any priority set), or none = only items without one.", false),
+                ("sort", "enum:board|priority", "board (default) = the order on the board; priority = most pressing first.", false),
                 ("limit", "integer", "Most items to return (default 50).", false)),
             ListItems, readOnly: true);
         Add("get_item", "Get item",
@@ -69,12 +71,13 @@ public sealed class AgentTools : IMcpToolHost
             Schema(ProjectArg, ("text", "string", "The item text; a prefix like \"BUG: \" becomes its tag.", true),
                 ("category", "string", "Category name (required unless parent is given).", false),
                 ("tag", "string", "Tag such as BUG, ADD, CHANGE, FIX, IDEA.", false),
+                PriorityArg,
                 ("parent", "string", "Id of an item to add this under as a sub-item.", false), ForceArg),
             AddItem);
         Add("update_item", "Update item",
-            "Changes an item's text, tag or state, or comments on it. state: todo puts it back and frees it (e.g. when you give up), " +
+            "Changes an item's text, tag, priority or state, or comments on it. state: todo puts it back and frees it (e.g. when you give up), " +
             "done marks it finished for review (prefer complete_item).",
-            Schema(IdArg, ("text", "string", "New text.", false), ("tag", "string", "New tag; empty removes it.", false),
+            Schema(IdArg, ("text", "string", "New text.", false), ("tag", "string", "New tag; empty removes it.", false), PriorityArg,
                 ("state", "enum:todo|in_progress|done", "New state.", false),
                 ("comment", "string", "Posts a comment in the item's discussion (like add_comment).", false), ForceArg),
             UpdateItem);
@@ -207,12 +210,25 @@ public sealed class AgentTools : IMcpToolHost
             throw new McpToolException($"No category \"{category}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.");
         var terms = (args.String("query") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var limit = Math.Clamp(args.Int("limit") ?? 50, 1, 500);
+        Func<TodoItem, bool> priorityOk = PriorityArgument(args) switch
+        {
+            null => _ => true,
+            Priority.None => i => i.Priority == Priority.None,
+            var min => i => i.Priority >= min,
+        };
+        var byPriority = args.String("sort") switch
+        {
+            null or "board" => false,
+            "priority" => true,
+            _ => throw new McpToolException("sort must be board or priority."),
+        };
 
         var matches = project.Walk().Where(l =>
-            stateOk(l.Item) &&
+            stateOk(l.Item) && priorityOk(l.Item) &&
             (tag == null || string.Equals(l.Item.Tag, tag, StringComparison.OrdinalIgnoreCase)) &&
             (category == null || ProjectExtensions.CategoryNamesEqual(l.Category.Name, category)) &&
             terms.All(t => l.Item.SearchText().Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (byPriority) matches = matches.OrderByDescending(l => l.Item.Priority).ToList();
         return Json(new JsonObject
         {
             ["project"] = project.Name,
@@ -292,7 +308,7 @@ public sealed class AgentTools : IMcpToolHost
 
         var (parsedTag, parsedText) = TxtListParser.SplitTag(text);
         var tag = args.String("tag") is { } explicitTag ? (explicitTag.Trim().Length == 0 ? null : explicitTag.Trim().ToUpperInvariant()) : parsedTag;
-        var item = new TodoItem { Text = parsedTag != null && parsedText.Length > 0 ? parsedText : text, Tag = tag };
+        var item = new TodoItem { Text = parsedTag != null && parsedText.Length > 0 ? parsedText : text, Tag = tag, Priority = PriorityArgument(args) ?? Priority.None };
         item.AddActivity(session.AgentName, "Added it.", agent: true);
         _main.GetProjectViewModel(project).AgentAdd(item, category, parentId);
         _state.StatusText = $"{session.AgentName} added “{Short(item.Text)}” to {project.Name}.";
@@ -305,6 +321,7 @@ public sealed class AgentTools : IMcpToolHost
         var text = args.String("text");
         var tag = args.String("tag");
         var comment = args.String("comment");
+        var priority = PriorityArgument(args);
         ItemState? state = args.String("state") switch
         {
             null => null,
@@ -313,12 +330,12 @@ public sealed class AgentTools : IMcpToolHost
             "done" => ItemState.Done,
             _ => throw new McpToolException("state must be todo, in_progress or done."),
         };
-        if (text == null && tag == null && state == null && string.IsNullOrWhiteSpace(comment))
-            throw new McpToolException("Nothing to change: give text, tag, state or comment.");
+        if (text == null && tag == null && priority == null && state == null && string.IsNullOrWhiteSpace(comment))
+            throw new McpToolException("Nothing to change: give text, tag, priority, state or comment.");
         if (text != null && text.Trim().Length == 0) throw new McpToolException("The text can't be empty.");
 
         var agent = session.AgentName;
-        var changes = text != null || tag != null || state != null;
+        var changes = text != null || tag != null || priority != null || state != null;
         var takenFrom = changes ? CheckOut(session, loc.Item, args) : null;
         if (changes)
         {
@@ -335,6 +352,11 @@ public sealed class AgentTools : IMcpToolHost
                 {
                     i.AddActivity(agent, newTag == null ? $"Removed the tag {i.Tag}." : $"Tagged it {newTag}.", agent: true);
                     i.Tag = newTag;
+                }
+                if (priority is { } p && p != i.Priority)
+                {
+                    i.AddActivity(agent, p == Priority.None ? "Removed the priority." : $"Set the priority to {p}.", agent: true);
+                    i.Priority = p;
                 }
                 if (state is { } s && s != i.State)
                 {
@@ -602,6 +624,10 @@ public sealed class AgentTools : IMcpToolHost
         };
     }
 
+    private static Priority? PriorityArgument(Args args) => args.String("priority") is { } text
+        ? Priorities.Parse(text) ?? throw new McpToolException("priority must be urgent, high, medium, low or none.")
+        : null;
+
     private void Edit(Project project, Guid itemId, Action<TodoItem> change) =>
         _main.GetProjectViewModel(project).AgentEdit(itemId, change);
 
@@ -645,6 +671,7 @@ public sealed class AgentTools : IMcpToolHost
             ["state"] = StateName(item.State),
         };
         if (item.Tag != null) json["tag"] = item.Tag;
+        if (item.Priority != Priority.None) json["priority"] = item.Priority.ToString().ToLowerInvariant();
         if (loc.Parent != null) json["parent"] = ShortId(loc.Parent.Id);
         if (item.ClaimedBy != null && item.State == ItemState.InProgress) json["checkedOutBy"] = item.ClaimedBy;
         if (item.NeedsReview) json["needsReview"] = true;
@@ -670,6 +697,7 @@ public sealed class AgentTools : IMcpToolHost
     {
         var json = new JsonObject { ["id"] = ShortId(item.Id), ["text"] = item.Text, ["state"] = StateName(item.State) };
         if (item.Tag != null) json["tag"] = item.Tag;
+        if (item.Priority != Priority.None) json["priority"] = item.Priority.ToString().ToLowerInvariant();
         if (item.HasAttachments) json["attachments"] = Paths(item.Attachments);
         if (item.Comments.CountComments() is > 0 and var count) json["comments"] = count;
         if (item.Children.Count > 0) json["subItems"] = new JsonArray(item.Children.Select(c => (JsonNode)ChildJson(c)).ToArray());
@@ -733,6 +761,8 @@ public sealed class AgentTools : IMcpToolHost
         ("project", "string", "Project name or key; defaults to the project matching your working directory.", false);
     private static readonly (string, string, string, bool) IdArg =
         ("id", "string", "Item id (the first 8 characters are enough).", true);
+    private static readonly (string, string, string, bool) PriorityArg =
+        ("priority", "enum:urgent|high|medium|low|none", "How pressing it is; none removes the priority.", false);
     private static readonly (string, string, string, bool) ForceArg =
         ("force", "boolean", "Take the item over from another agent that has it checked out (recorded in its history).", false);
 

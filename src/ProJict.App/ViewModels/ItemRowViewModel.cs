@@ -42,6 +42,9 @@ public sealed partial class ItemRowViewModel : ObservableObject
 
     public string? Tag => Item.Tag;
     public bool HasTag => !string.IsNullOrWhiteSpace(Item.Tag);
+    public Priority Priority => Item.Priority;
+    public bool HasPriority => Item.Priority != Priority.None;
+    public string PriorityToolTip => $"{Item.Priority} priority · click to change (Alt+1 urgent … Alt+4 low, Alt+0 none)";
     public bool IsDone => Item.IsDone;
     public bool IsInProgress => Item.State == ItemState.InProgress;
     /// <summary>A done child still listed under an open parent (shown struck through).</summary>
@@ -133,6 +136,7 @@ public sealed partial class ItemRowViewModel : ObservableObject
     [RelayCommand] private void Attach() => Owner.BrowseAttachments(this);
     [RelayCommand] private void PasteAttachments() => Owner.PasteAttachments(this);
     [RelayCommand] private void AcceptReview() => Owner.AcceptReview(this);
+    [RelayCommand] private void SetPriority(Priority priority) => Owner.SetPriority(this, priority);
     [RelayCommand] private void ReleaseClaim() => Owner.ReleaseClaim(this);
     [RelayCommand] private void OpenDiscussion() => Owner.OpenDiscussion(Item.Id);
 }

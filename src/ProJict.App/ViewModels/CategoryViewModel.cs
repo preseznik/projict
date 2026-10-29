@@ -80,7 +80,7 @@ public sealed partial class CategoryViewModel : ObservableObject
     public void Refresh()
     {
         var open = new List<ItemRowViewModel>();
-        foreach (var item in Model.Items.Where(i => !i.IsDone)) AddRows(open, item, null, 0, false);
+        foreach (var item in Ordered(Model.Items.Where(i => !i.IsDone), false)) AddRows(open, item, null, 0, false);
         var done = new List<ItemRowViewModel>();
         foreach (var item in Model.Items.Where(i => i.IsDone).OrderByDescending(i => i.DoneAt ?? DateTime.MinValue))
             AddRows(done, item, null, 0, true);
@@ -117,8 +117,12 @@ public sealed partial class CategoryViewModel : ObservableObject
     private void AddRows(List<ItemRowViewModel> rows, TodoItem item, TodoItem? parent, int depth, bool done)
     {
         rows.Add(new ItemRowViewModel(this, item, parent, depth, done));
-        foreach (var child in item.Children) AddRows(rows, child, item, depth + 1, done);
+        foreach (var child in Ordered(item.Children, done)) AddRows(rows, child, item, depth + 1, done);
     }
+
+    /// <summary>Open items most pressing first when the board is sorted by priority; otherwise (and in DONE) their own order.</summary>
+    private IEnumerable<TodoItem> Ordered(IEnumerable<TodoItem> items, bool done) =>
+        Owner.SortByPriority && !done ? items.ByPriority() : items;
 
     public IEnumerable<ItemRowViewModel> AllRows => OpenRows.Concat(DoneRows);
 

@@ -84,6 +84,8 @@ public sealed class WorkspaceSettings
     public string? GitHubAccount { get; set; }
     public string Theme { get; set; } = "System";
     public bool SideBySide { get; set; }
+    /// <summary>The board lists open items by priority (most pressing first) instead of in their own order.</summary>
+    public bool SortByPriority { get; set; }
     public bool MarkCopiedInProgress { get; set; }
     public Guid? LastCaptureProjectId { get; set; }
     public string? LastCaptureCategory { get; set; }

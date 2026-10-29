@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.10 (2026-10-29)
+
+- Priorities: urgent, high, medium or low. Set one from an item's right-click menu, its priority chip, or with Alt+1 to Alt+4 (Alt+0 removes it).
+- The board's new Priority button sorts open items by priority and shows only items of some priority. Sorting only changes what you see; exports keep your own order.
+- AI agents can read, set, filter and sort by priority, and Copy prompt mentions it.
+- Fixed: the menu behind a category's "…" button showed boxes instead of text.
+
 ## 0.1.9 (2026-10-29)
 
 - AI agents such as Claude Code can work in ProJict (over MCP). Copy the command from Settings › AI agents & comments and run it once. Agents find the project for the folder they work in, check items out, complete them with a resolution and screenshots, add items, attach files, write notes and draft release notes. They never delete anything, and Ctrl+Z undoes their changes.

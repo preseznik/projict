@@ -42,6 +42,7 @@ public static class PromptBuilder
         sb.Append(indent).Append("- ").Append(box).Append(' ');
         if (!string.IsNullOrWhiteSpace(item.Tag)) sb.Append("**").Append(item.Tag).Append(":** ");
         sb.Append(lines[0].Trim());
+        if (item.Priority != Priority.None) sb.Append(" _(").Append(item.Priority.ToString().ToLowerInvariant()).Append(" priority)_");
         if (item.State == ItemState.InProgress) sb.Append(" _(in progress)_");
         sb.Append('\n');
         foreach (var line in lines.Skip(1).Where(l => l.Trim().Length > 0))

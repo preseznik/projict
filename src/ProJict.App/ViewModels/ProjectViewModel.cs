@@ -36,6 +36,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         Main = main;
         Project = project;
         _sideBySide = state.Settings.SideBySide;
+        _sortByPriority = state.Settings.SortByPriority;
         RebuildAll();
         ReloadSideLists();
         state.ProjectReplaced += p =>
@@ -67,6 +68,16 @@ public sealed partial class ProjectViewModel : ObservableObject
         new("Done", ItemState.Done),
         new("Needs review", ItemState.Done, ReviewOnly: true),
     ];
+    public static IReadOnlyList<PriorityFilterOption> PriorityFilters { get; } =
+    [
+        new("All priorities", null),
+        new("Urgent", Priority.Urgent),
+        new("High and up", Priority.High),
+        new("Medium and up", Priority.Medium),
+        new("Any priority", Priority.Low),
+        new("No priority", null, NoneOnly: true),
+    ];
+    public static IReadOnlyList<Priority> PriorityChoices { get; } = [Priority.Urgent, Priority.High, Priority.Medium, Priority.Low];
     public bool IsInbox => Project.IsInbox;
     public bool IsNotInbox => !Project.IsInbox;
 
@@ -189,7 +200,57 @@ public sealed partial class ProjectViewModel : ObservableObject
         foreach (var c in Categories) c.RaiseShowDone();
     }
 
-    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null || WorkedBy != null;
+    // ───────────── Priority ─────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PriorityButtonText), nameof(IsPriorityViewActive))]
+    private PriorityFilterOption _priorityFilter = PriorityFilters[0];
+
+    /// <summary>Open items are listed most pressing first (only on screen: their own order, used by exports, stays).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PriorityButtonText), nameof(IsPriorityViewActive))]
+    private bool _sortByPriority;
+
+    partial void OnPriorityFilterChanged(PriorityFilterOption value) => ApplyFilter();
+
+    partial void OnSortByPriorityChanged(bool value)
+    {
+        _state.Settings.SortByPriority = value;
+        _state.MarkSettingsDirty();
+        foreach (var c in Categories) c.Refresh();
+        ApplyFilter();
+    }
+
+    public bool IsPriorityViewActive => SortByPriority || PriorityFilter is { IsActive: true };
+
+    /// <summary>The toolbar button's label: what the board is filtered or sorted by.</summary>
+    public string PriorityButtonText
+    {
+        get
+        {
+            var filter = PriorityFilter is { IsActive: true } f ? f.Label : null;
+            return filter != null ? SortByPriority ? $"{filter}, sorted" : filter : SortByPriority ? "By priority" : "Priority";
+        }
+    }
+
+    public void SetPriority(ItemRowViewModel row, Priority priority)
+    {
+        if (row.Item.Priority == priority) return;
+        // Redrawn rather than refreshed: when sorting by priority the item moves.
+        Mutate(() => row.Item.Priority = priority, [row.Category], row.Item.Id);
+        _state.StatusText = priority == Priority.None ? "Priority removed." : $"Priority set to {priority}.";
+    }
+
+    /// <summary>Reordering by hand doesn't mix with a board sorted by priority; true (with a hint) when it's sorted.</summary>
+    private bool SortedByPriority()
+    {
+        if (!SortByPriority) return false;
+        _state.StatusText = "The board is sorted by priority; turn that off (Priority › Sort by priority) to reorder items.";
+        return true;
+    }
+
+    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null ||
+                                  WorkedBy != null || PriorityFilter is { IsActive: true };
 
     public void Touch() => _state.MarkDirty(Project);
 
@@ -245,7 +306,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         {
             var tagOk = tag == AllTags || (tag == NoTag ? string.IsNullOrEmpty(item.Tag) : string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase));
             var text = item.SearchText();
-            return tagOk && StateOk(item) && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase)) &&
+            return tagOk && StateOk(item) && PriorityFilter?.Matches(item) != false && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase)) &&
                    (WorkedBy == null || item.Contributors().Any(c => string.Equals(c.Name, WorkedBy, StringComparison.OrdinalIgnoreCase)));
         }
 
@@ -270,7 +331,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             var visible = new HashSet<TodoItem>();
             foreach (var item in matches.SelectMany(m => m.Descendants().Where(StateOk).Prepend(m)))
                 for (TodoItem? p = item; p != null && visible.Add(p); p = parents.GetValueOrDefault(p)) { }
-            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && WorkedBy == null && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
+            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && WorkedBy == null && PriorityFilter is not { IsActive: true } && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
             foreach (var row in category.AllRows) row.IsVisible = nameMatches || visible.Contains(row.Item);
             category.IsVisible = nameMatches || visible.Count > 0;
             category.RaiseShowDone();
@@ -445,7 +506,8 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public void InsertSibling(ItemRowViewModel row, bool before)
     {
-        var item = new TodoItem();
+        // On a board sorted by priority, a new item with the same priority shows up right next to this one.
+        var item = new TodoItem { Priority = SortByPriority && !row.InDoneSection ? row.Item.Priority : Priority.None };
         Mutate(() =>
         {
             var list = SiblingsOf(row);
@@ -462,6 +524,7 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public void Indent(ItemRowViewModel row, int caret)
     {
+        if (SortedByPriority()) return;
         var list = SiblingsOf(row);
         var index = list.IndexOf(row.Item);
         TodoItem? previous = null;
@@ -494,6 +557,7 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     public void Move(ItemRowViewModel row, int delta, int caret)
     {
+        if (SortedByPriority()) return;
         var list = SiblingsOf(row);
         var index = list.IndexOf(row.Item);
         var target = index + delta;
@@ -586,7 +650,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     /// <summary>Drag &amp; drop: place <paramref name="source"/> before or after <paramref name="target"/> as its sibling.</summary>
     public void MoveItem(ItemRowViewModel source, ItemRowViewModel target, bool after)
     {
-        if (source.Item == target.Item || source.Item.Descendants().Contains(target.Item)) return;
+        if (source.Item == target.Item || source.Item.Descendants().Contains(target.Item) || SortedByPriority()) return;
         Mutate(() =>
         {
             SiblingsOf(source).Remove(source.Item);
@@ -1163,6 +1227,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         FilterText = "";
         TagFilter = AllTags;
         StateFilter = StateFilters[0];
+        PriorityFilter = PriorityFilters[0];
         WorkedBy = null;
         if (Project.Find(item.Id) is not { } loc || CategoryFor(loc.Category) is not { } category) return;
         category.IsExpanded = true;
@@ -1183,6 +1248,14 @@ public sealed partial class ProjectViewModel : ObservableObject
         var line = text.Replace("\r\n", "\n").Split('\n')[0];
         return line.Length > 60 ? line[..60] + "…" : line;
     }
+}
+
+/// <summary>A choice in the board's priority menu: items at least as pressing as <paramref name="AtLeast"/>, or only those without a priority.</summary>
+public sealed record PriorityFilterOption(string Label, Priority? AtLeast, bool NoneOnly = false)
+{
+    public bool IsActive => AtLeast != null || NoneOnly;
+    public bool Matches(TodoItem item) => NoneOnly ? item.Priority == Priority.None : AtLeast is not { } min || item.Priority >= min;
+    public override string ToString() => Label;
 }
 
 /// <summary>A choice in the board's state filter; State is null for "All states".</summary>
