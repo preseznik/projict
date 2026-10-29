@@ -47,6 +47,9 @@ public sealed partial class ItemRowViewModel : ObservableObject
     /// <summary>A done child still listed under an open parent (shown struck through).</summary>
     public bool IsDoneInOpenSection => Item.IsDone && !InDoneSection;
 
+    /// <summary>The two states the item isn't in, offered when its checkbox is right-clicked.</summary>
+    public IEnumerable<ItemState> OtherStates => Enum.GetValues<ItemState>().Where(s => s != Item.State);
+
     /// <summary>Three-state checkbox: unchecked = todo, indeterminate = in progress, checked = done.</summary>
     public bool? CheckState
     {

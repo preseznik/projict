@@ -229,6 +229,25 @@ public partial class ProjectView : UserControl
         menu.IsOpen = true;
     }
 
+    /// <summary>Right-click on a row's checkbox: the two states the item isn't in.</summary>
+    private void StateBox_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not CheckBox box || box.DataContext is not ItemRowViewModel row) return;
+        e.Handled = true;
+        var menu = new ContextMenu { PlacementTarget = box };
+        foreach (var state in row.OtherStates)
+        {
+            var (header, gesture) = state switch
+            {
+                Core.Model.ItemState.Done => ("Mark as done", "Ctrl+Enter"),
+                Core.Model.ItemState.InProgress => ("Mark as in progress", "Ctrl+I"),
+                _ => ("Mark as to do", row.IsDone ? "Ctrl+Enter" : "Ctrl+I"),
+            };
+            menu.Items.Add(new MenuItem { Header = header, InputGestureText = gesture, Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => row.Owner.SetState(row, state)) });
+        }
+        menu.IsOpen = true;
+    }
+
     private void AddItemButton_Click(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement { DataContext: CategoryViewModel category }) category.Owner.RequestAddItem(category);

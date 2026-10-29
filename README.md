@@ -32,7 +32,7 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 | Ctrl+K | search all projects |
 | Ctrl+Space | select items for **Copy prompt** |
 
-Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Drag items by their handle to reorder them or move them to another category.
+Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
 Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done.
 

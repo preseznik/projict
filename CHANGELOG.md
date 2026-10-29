@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 (2026-10-29)
+
+- Right-click an item's checkbox to mark it as to do, in progress or done.
+
 ## 0.1.6 (2026-10-29)
 
 - New state filter next to the tag filter on the board: show only items that are to do, in progress or done.

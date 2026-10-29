@@ -30,7 +30,8 @@
                                PreviewMouseLeftButtonDown="Grip_MouseDown" MouseMove="Grip_MouseMove" />
                     <CheckBox Grid.Column="1" IsChecked="{Binding CheckState}" IsThreeState="False" Focusable="False"
                               MinWidth="0" MinHeight="0" Padding="0" Margin="2,4,4,0" VerticalAlignment="Top"
-                              ToolTip="Done (Ctrl+Enter) · in progress (Ctrl+I)" />
+                              ToolTip="Done (Ctrl+Enter) · in progress (Ctrl+I) · right-click to choose"
+                              ContextMenuOpening="StateBox_ContextMenuOpening" />
                     <Border Grid.Column="2" Style="{StaticResource TagChip}" Background="{Binding Tag, Converter={StaticResource TagToBrush}}"
                             Visibility="{Binding HasTag, Converter={StaticResource BoolToVis}}" VerticalAlignment="Top" Margin="0,6,4,0">
                         <TextBlock Text="{Binding Tag}" Style="{StaticResource ChipText}" />
