@@ -227,31 +227,43 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <DockPanel Margin="4,0,4,8" LastChildFill="False">
-                        <Grid Width="260" DockPanel.Dock="Left">
+                    <!-- The filter box gives up width first, so the buttons on the right stay visible. -->
+                    <Grid Margin="4,0,4,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1000*" MinWidth="140" MaxWidth="260" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid>
                             <TextBox x:Name="FilterBox" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" PreviewKeyDown="FilterBox_PreviewKeyDown" />
                             <TextBlock Text="Filter (Ctrl+F)" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                        Visibility="{Binding FilterText, Converter={StaticResource InvEmptyToVis}}" />
                         </Grid>
-                        <ComboBox DockPanel.Dock="Left" ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" Width="130" Margin="8,0,0,0" ToolTip="Filter by tag" />
-                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
-                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" /><TextBlock Text="Show done" Margin="6,0,0,0" /></StackPanel>
-                        </ToggleButton>
-                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Side by side" IsChecked="{Binding SideBySide}" Margin="4,0,0,0" ToolTip="TODO and DONE columns side by side">
-                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE89A;" /><TextBlock Text="Side by side" Margin="6,0,0,0" /></StackPanel>
-                        </ToggleButton>
-                        <Button DockPanel.Dock="Left" Style="{StaticResource SubtleButton}" AutomationProperties.Name="{Binding ToggleAllText}" Command="{Binding ToggleAllCategoriesCommand}" Margin="4,0,0,0" ToolTip="Fold or unfold every category">
-                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleAllGlyph}" /><TextBlock Text="{Binding ToggleAllText}" Margin="6,0,0,0" /></StackPanel>
-                        </Button>
-
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" AutomationProperties.Name="Add category" Command="{Binding AddCategoryCommand}" ToolTip="New category">
-                            <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="Category" Margin="6,0,0,0" /></StackPanel>
-                        </Button>
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE7A6;" AutomationProperties.Name="Redo" Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE7A7;" AutomationProperties.Name="Undo" Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)" />
-                        <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE8E6;" AutomationProperties.Name="Clear selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear prompt selection" />
-                    </DockPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <ComboBox ItemsSource="{Binding TagFilters}" SelectedItem="{Binding TagFilter}" Width="130" Margin="8,0,0,0" ToolTip="Filter by tag" />
+                            <ComboBox ItemsSource="{x:Static vm:ProjectViewModel.StateFilters}" SelectedItem="{Binding StateFilter}" DisplayMemberPath="Label" Width="130" Margin="8,0,0,0"
+                                      AutomationProperties.Name="Filter by state" ToolTip="Show only to do, in progress or done items" />
+                            <ToggleButton Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Show done" IsChecked="{Binding ShowDone}" Margin="12,0,0,0" ToolTip="Expand every DONE section">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" /><TextBlock Text="Show done" Margin="6,0,0,0" /></StackPanel>
+                            </ToggleButton>
+                            <ToggleButton Style="{StaticResource SubtleToggle}" AutomationProperties.Name="Side by side" IsChecked="{Binding SideBySide}" Margin="4,0,0,0" ToolTip="TODO and DONE columns side by side">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE89A;" /><TextBlock Text="Side by side" Margin="6,0,0,0" /></StackPanel>
+                            </ToggleButton>
+                            <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="{Binding ToggleAllText}" Command="{Binding ToggleAllCategoriesCommand}" Margin="4,0,0,0" ToolTip="Fold or unfold every category">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleAllGlyph}" /><TextBlock Text="{Binding ToggleAllText}" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="12,0,0,0">
+                            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8E6;" AutomationProperties.Name="Clear selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear prompt selection" />
+                            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE7A7;" AutomationProperties.Name="Undo" Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)" />
+                            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE7A6;" AutomationProperties.Name="Redo" Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)" />
+                            <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Add category" Command="{Binding AddCategoryCommand}" ToolTip="New category">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="&#xE710;" /><TextBlock Text="Category" Margin="6,0,0,0" /></StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
 
                     <ScrollViewer x:Name="BoardScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="4,0,8,0">
                         <StackPanel>

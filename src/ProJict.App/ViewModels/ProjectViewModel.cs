@@ -59,6 +59,13 @@ public sealed partial class ProjectViewModel : ObservableObject
     /// <summary>A copy, so raising Groups gives the header's group box a fresh list.</summary>
     public IReadOnlyList<string> Groups => [.. _state.Settings.Groups];
     public IReadOnlyList<string> TagFilters { get; private set; } = [AllTags];
+    public static IReadOnlyList<StateFilterOption> StateFilters { get; } =
+    [
+        new("All states", null),
+        new("To do", ItemState.Todo),
+        new("In progress", ItemState.InProgress),
+        new("Done", ItemState.Done),
+    ];
     public bool IsInbox => Project.IsInbox;
     public bool IsNotInbox => !Project.IsInbox;
 
@@ -158,12 +165,14 @@ public sealed partial class ProjectViewModel : ObservableObject
 
     [ObservableProperty] private string _filterText = "";
     [ObservableProperty] private string _tagFilter = AllTags;
+    [ObservableProperty] private StateFilterOption _stateFilter = StateFilters[0];
     [ObservableProperty] private bool _showDone;
     [ObservableProperty] private bool _sideBySide;
     [ObservableProperty] private int _selectedTab;
 
     partial void OnFilterTextChanged(string value) => ApplyFilter();
     partial void OnTagFilterChanged(string value) => ApplyFilter();
+    partial void OnStateFilterChanged(StateFilterOption value) => ApplyFilter();
 
     partial void OnShowDoneChanged(bool value)
     {
@@ -177,7 +186,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         foreach (var c in Categories) c.RaiseShowDone();
     }
 
-    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags;
+    public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null;
 
     public void Touch() => _state.MarkDirty(Project);
 
@@ -221,12 +230,15 @@ public sealed partial class ProjectViewModel : ObservableObject
         var active = IsFilterActive;
         var terms = (FilterText ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var tag = TagFilter ?? AllTags;
+        var state = StateFilter?.State;
+
+        bool StateOk(TodoItem item) => state == null || item.State == state;
 
         bool Matches(TodoItem item)
         {
             var tagOk = tag == AllTags || (tag == NoTag ? string.IsNullOrEmpty(item.Tag) : string.Equals(item.Tag, tag, StringComparison.OrdinalIgnoreCase));
             var text = item.DisplayText();
-            return tagOk && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase));
+            return tagOk && StateOk(item) && terms.All(t => text.Contains(t, StringComparison.OrdinalIgnoreCase));
         }
 
         foreach (var category in Categories)
@@ -239,18 +251,18 @@ public sealed partial class ProjectViewModel : ObservableObject
                 continue;
             }
 
-            // A match keeps its ancestors and descendants visible so the tree still reads correctly.
+            // A match keeps its ancestors and descendants (those in the chosen state) visible so the tree still reads correctly.
             var parents = new Dictionary<TodoItem, TodoItem>();
-            var visible = new HashSet<TodoItem>();
+            var matches = new List<TodoItem>();
             foreach (var loc in category.Model.Walk())
             {
                 if (loc.Parent != null) parents[loc.Item] = loc.Parent;
-                if (!Matches(loc.Item)) continue;
-                visible.Add(loc.Item);
-                foreach (var d in loc.Item.Descendants()) visible.Add(d);
-                for (var p = loc.Parent; p != null; p = parents.GetValueOrDefault(p)) visible.Add(p);
+                if (Matches(loc.Item)) matches.Add(loc.Item);
             }
-            var nameMatches = terms.Length > 0 && tag == AllTags && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
+            var visible = new HashSet<TodoItem>();
+            foreach (var item in matches.SelectMany(m => m.Descendants().Where(StateOk).Prepend(m)))
+                for (TodoItem? p = item; p != null && visible.Add(p); p = parents.GetValueOrDefault(p)) { }
+            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
             foreach (var row in category.AllRows) row.IsVisible = nameMatches || visible.Contains(row.Item);
             category.IsVisible = nameMatches || visible.Count > 0;
             category.RaiseShowDone();
@@ -845,6 +857,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         SelectedTab = 0;
         FilterText = "";
         TagFilter = AllTags;
+        StateFilter = StateFilters[0];
         if (Project.Find(item.Id) is not { } loc || CategoryFor(loc.Category) is not { } category) return;
         category.IsExpanded = true;
         if (loc.Item.IsDone || Project.Walk().Any(l => l.Depth == 0 && l.Item.IsDone && l.Item.Descendants().Contains(item)))
@@ -864,6 +877,12 @@ public sealed partial class ProjectViewModel : ObservableObject
         var line = text.Replace("\r\n", "\n").Split('\n')[0];
         return line.Length > 60 ? line[..60] + "…" : line;
     }
+}
+
+/// <summary>A choice in the board's state filter; State is null for "All states".</summary>
+public sealed record StateFilterOption(string Label, ItemState? State)
+{
+    public override string ToString() => Label;
 }
 
 public sealed class NoteViewModel(ProjectViewModel owner, NoteDoc model) : ObservableObject

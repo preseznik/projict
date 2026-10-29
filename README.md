@@ -34,6 +34,8 @@ Get **`ProJict-Setup-x.y.z.exe`** from [Releases](https://github.com/preseznik/p
 
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Drag items by their handle to reorder them or move them to another category.
 
+Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done.
+
 ## Text files
 
 ProJict reads and writes simple text lists like this:

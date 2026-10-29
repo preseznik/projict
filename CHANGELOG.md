@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 (2026-10-29)
+
+- New state filter next to the tag filter on the board: show only items that are to do, in progress or done.
+
 ## 0.1.5 (2026-10-28)
 
 - Checks for a new version every time it starts (before, at most once a day).
