@@ -22,6 +22,10 @@ public static class Discussions
         }
     }
 
+    /// <summary>The files posted in a discussion.</summary>
+    public static IEnumerable<Attachment> Attachments(this List<Comment>? threads) =>
+        threads.Walk().SelectMany(e => e.Comment.Attachments ?? []);
+
     /// <summary>Comments that weren't deleted.</summary>
     public static int CountComments(this List<Comment>? threads) => threads.Walk().Count(e => !e.Comment.Deleted);
 
@@ -56,6 +60,7 @@ public static class Discussions
         {
             comment.Deleted = true;
             comment.Text = "";
+            comment.Attachments = null;
             return threads;
         }
         if (parent == null) threads.Remove(comment);

@@ -3,6 +3,37 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:ProJict.App.ViewModels">
     <UserControl.Resources>
+        <DataTemplate x:Key="CommentFile" DataType="{x:Type vm:AttachmentViewModel}">
+            <Button Style="{StaticResource SubtleButton}" Padding="0" Margin="0,0,6,4" Command="{Binding OpenCommand}"
+                    ToolTip="{Binding ShortToolTip}" AutomationProperties.Name="{Binding FileName}">
+                <Border Background="{DynamicResource ControlFillColorDefaultBrush}" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="6,3">
+                    <Grid>
+                        <Image Source="{Binding Thumbnail}" MaxHeight="110" MaxWidth="220" Stretch="Uniform" Margin="-4,-1"
+                               Visibility="{Binding ShowsThumbnail, Converter={StaticResource BoolToVis}}" />
+                        <StackPanel Orientation="Horizontal" Visibility="{Binding ShowsThumbnail, Converter={StaticResource InvBoolToVis}}">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE8A5;" FontSize="12" Margin="0,0,6,0" />
+                            <TextBlock Text="{Binding FileName}" FontSize="12" MaxWidth="180" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding SizeText}" Style="{StaticResource MutedText}" FontSize="11" Margin="6,0,0,0" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Button>
+        </DataTemplate>
+        <DataTemplate x:Key="PendingFile" DataType="{x:Type vm:PendingFile}">
+            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="6,2,2,2" Margin="0,4,6,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Style="{StaticResource Icon}" Text="&#xE723;" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Name}" FontSize="12" MaxWidth="170" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding SizeText}" Style="{StaticResource MutedText}" FontSize="11" Margin="5,0,0,0" VerticalAlignment="Center" />
+                    <Button Style="{StaticResource SubtleIconButton}" Content="&#xE711;" FontSize="9" Padding="4" Margin="2,0,0,0" Command="{Binding RemoveCommand}"
+                            ToolTip="Leave this file out" AutomationProperties.Name="Leave out" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+        <ItemsPanelTemplate x:Key="Wrap">
+            <WrapPanel />
+        </ItemsPanelTemplate>
         <!-- A comment with its replies nested below; replies use this same template, so threads go as deep as people answer. -->
         <DataTemplate DataType="{x:Type vm:CommentViewModel}">
             <StackPanel Margin="0,8,0,0">
@@ -29,12 +60,19 @@
                             </StackPanel>
                         </Grid>
                         <TextBox x:Name="Text" Style="{StaticResource SelectableText}" Text="{Binding Text, Mode=OneWay}" Margin="18,2,4,0"
-                                 AutomationProperties.Name="Comment" />
+                                 AutomationProperties.Name="Comment" Visibility="{Binding Text, Converter={StaticResource EmptyToVis}}" />
+                        <ItemsControl ItemsSource="{Binding Attachments}" ItemTemplate="{StaticResource CommentFile}" ItemsPanel="{StaticResource Wrap}"
+                                      Focusable="False" Margin="18,4,4,0" Visibility="{Binding HasAttachments, Converter={StaticResource BoolToVis}}" />
                         <StackPanel Margin="18,6,0,0" Visibility="{Binding IsReplying, Converter={StaticResource BoolToVis}}">
                             <TextBox Text="{Binding ReplyText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
                                      MinHeight="54" MaxHeight="160" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="Reply"
-                                     IsVisibleChanged="ReplyBox_IsVisibleChanged" PreviewKeyDown="ReplyBox_PreviewKeyDown" />
+                                     IsVisibleChanged="ReplyBox_IsVisibleChanged" PreviewKeyDown="ReplyBox_PreviewKeyDown"
+                                     AllowDrop="True" PreviewDragOver="Files_PreviewDragOver" PreviewDrop="ReplyBox_PreviewDrop" />
+                            <ItemsControl ItemsSource="{Binding Pending}" ItemTemplate="{StaticResource PendingFile}" ItemsPanel="{StaticResource Wrap}" Focusable="False"
+                                          Visibility="{Binding HasPending, Converter={StaticResource BoolToVis}}" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                <Button Style="{StaticResource SubtleIconButton}" Content="&#xE723;" Command="{Binding AttachFilesCommand}" Margin="0,0,6,0"
+                                        ToolTip="Attach files (or paste or drop them in the box)" AutomationProperties.Name="Attach files" />
                                 <Button Style="{StaticResource SubtleButton}" Content="Cancel" Command="{Binding CancelReplyCommand}" />
                                 <Button Style="{StaticResource AccentButtonStyle}" Content="Reply" Command="{Binding SendReplyCommand}" Margin="6,0,0,0"
                                         ToolTip="Ctrl+Enter" />
@@ -91,12 +129,17 @@
                 <Grid>
                     <TextBox x:Name="NewThread" Text="{Binding NewText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap"
                              MinHeight="64" MaxHeight="180" VerticalScrollBarVisibility="Auto" AutomationProperties.Name="New comment"
-                             IsEnabled="{Binding IsGone, Converter={StaticResource InvBool}}" PreviewKeyDown="NewThread_PreviewKeyDown" />
+                             IsEnabled="{Binding IsGone, Converter={StaticResource InvBool}}" PreviewKeyDown="NewThread_PreviewKeyDown"
+                             AllowDrop="True" PreviewDragOver="Files_PreviewDragOver" PreviewDrop="NewThread_PreviewDrop" />
                     <TextBlock Text="Start a new thread…" Style="{StaticResource MutedText}" IsHitTestVisible="False" Margin="11,7,0,0" VerticalAlignment="Top"
                                Visibility="{Binding NewText, Converter={StaticResource InvEmptyToVis}}" />
                 </Grid>
+                <ItemsControl x:Name="PendingFiles" ItemsSource="{Binding Pending}" ItemTemplate="{StaticResource PendingFile}" ItemsPanel="{StaticResource Wrap}"
+                              Focusable="False" Visibility="{Binding HasPending, Converter={StaticResource BoolToVis}}" />
                 <DockPanel Margin="0,6,0,0">
                     <Button DockPanel.Dock="Right" Content="Post" Style="{StaticResource AccentButtonStyle}" MinWidth="80" Command="{Binding PostCommand}" ToolTip="Ctrl+Enter" />
+                    <Button DockPanel.Dock="Right" Style="{StaticResource SubtleIconButton}" Content="&#xE723;" Command="{Binding AttachFilesCommand}" Margin="0,0,6,0"
+                            ToolTip="Attach files (or paste or drop them in the box)" AutomationProperties.Name="Attach files" />
                     <TextBlock Text="{Binding SignedAs}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis" />
                 </DockPanel>
             </StackPanel>

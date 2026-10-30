@@ -309,7 +309,7 @@ public sealed partial class AppState : ObservableObject
     /// <summary>Deletes stored attachments nothing refers to any more; off the UI thread, since it may read through the backups.</summary>
     public void CleanUpAttachments()
     {
-        var inUse = Projects.SelectMany(p => p.Attachments()).Select(a => a.Id).ToHashSet();
+        var inUse = Projects.SelectMany(p => p.Attachments()).Concat(Settings.GroupAttachments()).Select(a => a.Id).ToHashSet();
         var started = DateTime.Now;
         Task.Run(() =>
         {

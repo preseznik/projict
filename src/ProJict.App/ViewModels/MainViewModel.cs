@@ -29,6 +29,10 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     /// <summary>Who is there and what each did last (or the guests looking at it).</summary>
     public string WorkersToolTip => main.AgentActivity.ToolTipFor(Project) is { Length: > 0 } agents ? agents : WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
 
+    /// <summary>No Windows notifications from this project (right-click › Mute notifications).</summary>
+    public bool IsMuted => main.State.AppSettings.Notifications.MutedProjects.Contains(Project.Id);
+    public string MuteHeader => IsMuted ? "Unmute notifications" : "Mute notifications";
+
     /// <summary>An agent did something here: the badges' tooltip says so.</summary>
     public void RefreshWorkers() => OnPropertyChanged(nameof(WorkersToolTip));
     /// <summary>A ship request in progress shows as a glyph next to the count (and the red dot while its plan waits for you).</summary>
@@ -433,6 +437,18 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand] private void ShowInbox() => OpenProject(State.Inbox);
+
+    /// <summary>Right-click a project › Mute notifications (or unmute).</summary>
+    [RelayCommand]
+    private void ToggleMute(ProjectListItemViewModel? item)
+    {
+        if (item == null) return;
+        var muted = State.AppSettings.Notifications.MutedProjects;
+        if (!muted.Remove(item.Project.Id)) muted.Add(item.Project.Id);
+        State.SaveAppSettings();
+        item.Refresh();
+        State.StatusText = item.IsMuted ? $"No more Windows notifications from {item.Name}." : $"Windows notifications from {item.Name} again.";
+    }
 
     /// <summary>The Agents view, for one project (right-click a project › Agents) or all of them (the sidebar).</summary>
     [RelayCommand]

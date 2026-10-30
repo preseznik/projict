@@ -241,6 +241,8 @@
                                             <MenuItem Header="Ship…" Command="{Binding PlacementTarget.Tag.ShipProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"
                                                       ToolTip="Ask an AI agent to commit, build, package, push or release it; you approve its plan first" />
                                             <MenuItem Header="Hide" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="{Binding MuteHeader}" Command="{Binding PlacementTarget.Tag.ToggleMuteCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"
+                                                      ToolTip="Windows notifications from this project (Settings › Notifications)" />
                                             <MenuItem Header="Move to group" ItemsSource="{Binding GroupChoices}" Click="MoveToGroupMenu_Click">
                                                 <MenuItem.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:GroupChoiceViewModel}">

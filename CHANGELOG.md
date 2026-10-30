@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.18 (2026-10-30)
+
+- **Windows notifications** for what needs you (Settings › Notifications).
+  - On to start: work to review, new comments in discussions you wrote in or on items you added, ship plans to approve, and people asking to join.
+  - Optional: agents checking out items, every new comment, API tokens about to expire, ProJict updates.
+  - They show only while ProJict isn't in front, several at once as one, and never for your own actions. A click opens ProJict at the thing.
+  - Mute a noisy project from its right-click menu.
+- **Files and pictures in discussions.**
+  - Attach them to a new thread or a reply with the paperclip, paste a screenshot (Ctrl+V), or drop files on the box.
+  - Pictures show as thumbnails and open in ProJict's viewer. Saving a marked-up copy there posts it as a reply.
+  - AI agents can post files with their comments too.
+  - Settings › Comments & history sets the largest file allowed (10 MB to start).
+- A category's header now shows the red dot whenever something inside waits for you, also while the category is open and only its Done list is folded. The dot sits next to the category's name.
+
 ## 0.1.17 (2026-10-30)
 
 - **What waits for you is easier to find.**

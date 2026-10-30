@@ -112,6 +112,38 @@
             </StackPanel>
         </Expander>
 
+        <Expander x:Name="NotificationsSection" Tag="Notifications" Style="{StaticResource Section}">
+            <Expander.Header>
+                <StackPanel>
+                    <TextBlock Text="Notifications" Style="{StaticResource SectionName}" />
+                    <TextBlock x:Name="NotificationsSummary" Style="{StaticResource Summary}" />
+                </StackPanel>
+            </Expander.Header>
+            <StackPanel Style="{StaticResource Body}">
+                <CheckBox x:Name="NotifyEnabled" Content="Show Windows notifications for what needs you" />
+                <!-- One check box per kind; the Tag is the NotificationKind. -->
+                <UniformGrid x:Name="NotifyKinds" Columns="2" Margin="0,8,0,0" IsEnabled="{Binding IsChecked, ElementName=NotifyEnabled}">
+                    <UniformGrid.Resources>
+                        <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                            <Setter Property="MinWidth" Value="0" />
+                            <Setter Property="Margin" Value="0,0,12,6" />
+                        </Style>
+                    </UniformGrid.Resources>
+                    <CheckBox Content="Work to review" Tag="Review" ToolTip="An AI agent finished an item" />
+                    <CheckBox Content="Comments in your discussions" Tag="Comment" ToolTip="New comments where you wrote, or on items you added" />
+                    <CheckBox Content="Ship plans to approve" Tag="ShipPlan" />
+                    <CheckBox Content="People asking to join" Tag="JoinRequest" ToolTip="Through sharing" />
+                    <CheckBox Content="Agents checking out items" Tag="CheckOut" />
+                    <CheckBox Content="Every new comment" Tag="AnyComment" ToolTip="Also in discussions you're not part of" />
+                    <CheckBox Content="API tokens about to expire" Tag="TokenExpiring" />
+                    <CheckBox Content="ProJict updates" Tag="Update" />
+                </UniformGrid>
+                <TextBlock x:Name="MutedText" Style="{StaticResource MutedText}" Margin="2,2,0,0" TextWrapping="Wrap" />
+                <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
+                           Text="They show only while ProJict isn't in front, several at once as one, never for what you did yourself. Windows' Do not disturb silences them; a click opens ProJict at the thing. Mute a noisy project from its right-click menu." />
+            </StackPanel>
+        </Expander>
+
         <Expander x:Name="BoardSection" Tag="Board" Style="{StaticResource Section}">
             <Expander.Header>
                 <StackPanel>
@@ -164,9 +196,20 @@
                         <ColumnDefinition Width="170" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <TextBlock Text="Your name" VerticalAlignment="Center" />
                     <TextBox x:Name="UserName" Grid.Column="1" Width="220" HorizontalAlignment="Left"
                              ToolTip="How you sign comments, notes and history entries. Empty uses your Windows user name." />
+                    <TextBlock Grid.Row="1" Text="Files in comments" VerticalAlignment="Center" Margin="0,8,0,0" />
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
+                        <TextBlock Text="up to" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="CommentFileLimit" Width="70" AutomationProperties.Name="Largest file in a comment, MB"
+                                 ToolTip="The largest file you, people you share with or AI agents may post in a discussion" />
+                        <TextBlock Text="MB each" VerticalAlignment="Center" Margin="8,0,0,0" />
+                    </StackPanel>
                 </Grid>
             </StackPanel>
         </Expander>

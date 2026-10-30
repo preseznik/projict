@@ -225,16 +225,17 @@
                                  MinWidth="30" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
                         <TextBlock Text="{Binding OpenCountText}" FontSize="15" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"
                                    Margin="2,0,4,0" ToolTip="Open items" />
+                        <!-- Something inside waits for you: a click shows just that. -->
+                        <Button x:Name="AttentionButton" Style="{StaticResource SubtleButton}" Padding="3" Margin="0,0,4,0" VerticalAlignment="Center"
+                                Command="{Binding ShowWaitingCommand}" ToolTip="{Binding AttentionToolTip}" AutomationProperties.Name="Show what waits for you"
+                                Visibility="{Binding ShowAttention, Converter={StaticResource BoolToVis}}">
+                            <Ellipse Style="{StaticResource UnreadDot}" />
+                        </Button>
                     </StackPanel>
                     <TextBox Grid.Column="3" Style="{StaticResource HoverHintTextBox}" FontSize="12" Tag="description…" IsReadOnly="{Binding Owner.IsReadOnlyBoard}"
                              Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                              Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}" GotKeyboardFocus="Header_GotFocus" />
                     <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="8,0">
-                        <Button x:Name="AttentionButton" Style="{StaticResource SubtleButton}" Padding="3" Margin="0,0,3,0" Command="{Binding ShowWaitingCommand}"
-                                ToolTip="{Binding AttentionToolTip}" AutomationProperties.Name="Show what waits for you"
-                                Visibility="{Binding ShowAttention, Converter={StaticResource BoolToVis}}">
-                            <Ellipse Style="{StaticResource UnreadDot}" />
-                        </Button>
                         <TextBlock Text="{Binding CountsText}" Style="{StaticResource MutedText}" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Column="5" Orientation="Horizontal">

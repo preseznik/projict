@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ProJict.App.Services;
 using ProJict.Core.Model;
 
 namespace ProJict.App.ViewModels;
@@ -32,6 +34,7 @@ public sealed partial class DiscussionViewModel : ObservableObject
         _main = main;
         _state = state;
         Target = target;
+        Pending.CollectionChanged += (_, _) => NotifyDrafts();
         Sync();
     }
 
@@ -96,13 +99,85 @@ public sealed partial class DiscussionViewModel : ObservableObject
         _state.MarkRead(Target.Kind == DiscussionKind.Group ? AppState.ReadKey(Target.Group!) : AppState.ReadKey(Target.TargetId), comments);
     }
 
-    private bool CanPost() => NewText.Trim().Length > 0 && !IsGone;
+    private bool CanPost() => (NewText.Trim().Length > 0 || Pending.Count > 0) && !IsGone;
 
     [RelayCommand(CanExecute = nameof(CanPost))]
     private void Post()
     {
-        if (Post(NewText, null)) NewText = "";
+        if (!Post(NewText, null, [.. Pending])) return;
+        NewText = "";
+        Pending.Clear();
     }
+
+    // ───────────── Files in comments ─────────────
+
+    /// <summary>Files to go with the next new thread.</summary>
+    public ObservableCollection<PendingFile> Pending { get; } = [];
+
+    /// <summary>Shows and opens the files of this discussion: the project's own, or the Inbox's (the same data folder) for a group.</summary>
+    internal ProjectViewModel AttachmentOwner => _main.GetProjectViewModel(Project ?? _state.Inbox);
+
+    [RelayCommand] private void AttachFiles() => AddFiles(Pending, AskForFiles());
+
+    /// <summary>Pastes files or a picture from the clipboard into the new thread.</summary>
+    public void PasteFiles() => Paste(Pending);
+
+    public void AddFiles(IEnumerable<string> paths) => AddFiles(Pending, paths);
+
+    internal static IReadOnlyList<string> AskForFiles()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog { Title = "Attach files to the comment", Multiselect = true };
+        return dialog.ShowDialog(Application.Current.MainWindow) == true ? dialog.FileNames : [];
+    }
+
+    internal void Paste(ObservableCollection<PendingFile> to)
+    {
+        var (files, png) = ClipboardAttachments.Read();
+        if (png != null) AddPicture(to, png);
+        else AddFiles(to, files);
+    }
+
+    /// <summary>Adds files to a draft, leaving out (and saying so) the ones over the size limit (Settings › Comments &amp; history).</summary>
+    internal void AddFiles(ObservableCollection<PendingFile> to, IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists) continue;
+            if (TooBig(info.Name, info.Length)) continue;
+            to.Add(new PendingFile(info.Name, info.Length, path, null, to));
+        }
+        NotifyDrafts();
+    }
+
+    internal void AddPicture(ObservableCollection<PendingFile> to, byte[] png)
+    {
+        var name = $"Pasted image {DateTime.Now:yyyy-MM-dd HHmmss}.png";
+        if (TooBig(name, png.Length)) return;
+        to.Add(new PendingFile(name, png.Length, null, png, to));
+        NotifyDrafts();
+    }
+
+    private bool TooBig(string name, long size)
+    {
+        var limit = _state.Settings.CommentFileLimitBytes;
+        if (size <= limit) return false;
+        _state.StatusText = $"{name} is {AttachmentViewModel.FormatSize(size)}; files in comments can be up to {AttachmentViewModel.FormatSize(limit)} " +
+                            "(Settings › Comments & history).";
+        return true;
+    }
+
+    internal void NotifyDrafts()
+    {
+        PostCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasPending));
+    }
+
+    public bool HasPending => Pending.Count > 0;
+
+    /// <summary>A marked-up copy of a picture in the discussion goes back in as a reply to its comment.</summary>
+    internal void PostCopy(Attachment copy, Guid replyTo) =>
+        Post("", replyTo, [new PendingFile(copy.FileName, copy.Size, null, null, null) { Stored = copy }]);
 
     [RelayCommand] private void Close() => _main.CloseDiscussion();
 
@@ -132,16 +207,20 @@ public sealed partial class DiscussionViewModel : ObservableObject
     }
 
     /// <summary>Posts your comment as a new thread or a reply; false (with the reason in the status bar) when it couldn't.</summary>
-    public bool Post(string text, Guid? replyTo)
+    public bool Post(string text, Guid? replyTo, IReadOnlyList<PendingFile>? files = null)
     {
-        if (text.Trim().Length == 0 || IsGone) return false;
+        files ??= [];
+        if ((text.Trim().Length == 0 && files.Count == 0) || IsGone) return false;
         var comment = new Comment { By = _state.UserName, Text = text.Trim() };
         try
         {
+            // Copied into the data folder (as for items); the originals are only read.
+            if (files.Count > 0)
+                comment.Attachments = files.Select(f => f.Stored ?? (f.Data != null ? _state.Store.WriteAttachment(f.Name, f.Data) : _state.Store.ImportAttachment(f.Path!))).ToList();
             if (Target.Kind == DiscussionKind.Group) _state.PostGroupComment(Target.Group!, comment, replyTo);
             else _main.GetProjectViewModel(Project!).PostComment(Target.TargetId, comment, replyTo);
         }
-        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException or UnauthorizedAccessException)
         {
             _state.StatusText = ex.Message;
             return false;
@@ -188,6 +267,7 @@ public sealed partial class CommentViewModel : ObservableObject
         _owner = owner;
         Model = model;
         Depth = depth;
+        Pending.CollectionChanged += (_, _) => NotifyDraft();
         SyncList(Replies, model.Replies, owner, depth + 1);
     }
 
@@ -224,15 +304,51 @@ public sealed partial class CommentViewModel : ObservableObject
         ReplyText = "";
     }
 
-    private bool CanSendReply() => ReplyText.Trim().Length > 0;
+    private bool CanSendReply() => ReplyText.Trim().Length > 0 || Pending.Count > 0;
 
     [RelayCommand(CanExecute = nameof(CanSendReply))]
     private void SendReply()
     {
-        if (!_owner.Post(ReplyText, Id)) return;
+        if (!_owner.Post(ReplyText, Id, [.. Pending])) return;
         ReplyText = "";
+        Pending.Clear();
         IsReplying = false;
     }
+
+    /// <summary>Files to go with the reply being written.</summary>
+    public ObservableCollection<PendingFile> Pending { get; } = [];
+    public bool HasPending => Pending.Count > 0;
+
+    [RelayCommand]
+    private void AttachFiles()
+    {
+        _owner.AddFiles(Pending, DiscussionViewModel.AskForFiles());
+        NotifyDraft();
+    }
+
+    public void PasteFiles()
+    {
+        _owner.Paste(Pending);
+        NotifyDraft();
+    }
+
+    public void AddFiles(IEnumerable<string> paths)
+    {
+        _owner.AddFiles(Pending, paths);
+        NotifyDraft();
+    }
+
+    internal void NotifyDraft()
+    {
+        SendReplyCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasPending));
+    }
+
+    /// <summary>The comment's files: pictures as thumbnails (they open in ProJict's viewer), other files as chips.</summary>
+    public IReadOnlyList<AttachmentViewModel> Attachments => _attachments ??= Model.Deleted ? []
+        : (Model.Attachments ?? []).Select(a => new AttachmentViewModel(_owner.AttachmentOwner, a, () => { }, copy => _owner.PostCopy(copy, Id))).ToList();
+    private IReadOnlyList<AttachmentViewModel>? _attachments;
+    public bool HasAttachments => Attachments.Count > 0;
 
     [RelayCommand] private void Delete() => _owner.Remove(this);
 
@@ -240,9 +356,13 @@ public sealed partial class CommentViewModel : ObservableObject
 
     private void Update(Comment model)
     {
-        var changed = model.Text != Model.Text || model.Deleted != Model.Deleted;
+        var changed = model.Text != Model.Text || model.Deleted != Model.Deleted || (model.Attachments?.Count ?? 0) != (Model.Attachments?.Count ?? 0);
         Model = model;
-        if (changed) OnPropertyChanged(string.Empty);
+        if (changed)
+        {
+            _attachments = null;
+            OnPropertyChanged(string.Empty);
+        }
         SyncList(Replies, model.Replies, _owner, Depth + 1);
         OnPropertyChanged(nameof(HasReplies));
     }
@@ -266,4 +386,17 @@ public sealed partial class CommentViewModel : ObservableObject
             existing.Update(list[i]);
         }
     }
+}
+
+/// <summary>A file chosen for a comment that isn't posted yet: a file on disk, or a pasted picture.</summary>
+public sealed partial class PendingFile(string name, long size, string? path, byte[]? data, ObservableCollection<PendingFile>? list)
+{
+    public string Name { get; } = name;
+    public string? Path { get; } = path;
+    public byte[]? Data { get; } = data;
+    /// <summary>Already in the data folder (a marked-up copy).</summary>
+    public Attachment? Stored { get; init; }
+    public string SizeText => AttachmentViewModel.FormatSize(size);
+
+    [RelayCommand] private void Remove() => list?.Remove(this);
 }

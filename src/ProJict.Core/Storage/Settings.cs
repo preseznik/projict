@@ -3,6 +3,39 @@ using ProJict.Core.Model;
 
 namespace ProJict.Core.Storage;
 
+/// <summary>What can notify you (Settings › Notifications).</summary>
+public enum NotificationKind { Review, Comment, ShipPlan, JoinRequest, CheckOut, AnyComment, TokenExpiring, Update }
+
+/// <summary>Which Windows notifications you want, and the projects you muted.</summary>
+public sealed class NotificationSettings
+{
+    public bool Enabled { get; set; } = true;
+    /// <summary>An AI agent finished an item: it waits for your review.</summary>
+    public bool Review { get; set; } = true;
+    /// <summary>New comments in a discussion you wrote in, or on an item you added.</summary>
+    public bool Comment { get; set; } = true;
+    public bool ShipPlan { get; set; } = true;
+    public bool JoinRequest { get; set; } = true;
+    public bool CheckOut { get; set; }
+    /// <summary>Every new comment, also in discussions you're not part of.</summary>
+    public bool AnyComment { get; set; }
+    public bool TokenExpiring { get; set; }
+    public bool Update { get; set; }
+    public List<Guid> MutedProjects { get; set; } = [];
+
+    public bool Allows(NotificationKind kind) => kind switch
+    {
+        NotificationKind.Review => Review,
+        NotificationKind.Comment => Comment,
+        NotificationKind.ShipPlan => ShipPlan,
+        NotificationKind.JoinRequest => JoinRequest,
+        NotificationKind.CheckOut => CheckOut,
+        NotificationKind.AnyComment => AnyComment,
+        NotificationKind.TokenExpiring => TokenExpiring,
+        _ => Update,
+    };
+}
+
 /// <summary>Machine-local bootstrap settings (%LocalAppData%\ProJict\settings.json).</summary>
 public sealed class AppSettings
 {
@@ -29,6 +62,8 @@ public sealed class AppSettings
     public DateTime? UnreadSince { get; set; }
     /// <summary>The Settings sections you left open, opened again next time.</summary>
     public List<string>? OpenSettingsSections { get; set; }
+    /// <summary>Windows notifications for what needs you (Settings › Notifications).</summary>
+    public NotificationSettings Notifications { get; set; } = new();
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProJict", "settings.json");
@@ -93,6 +128,13 @@ public sealed class WorkspaceSettings
     public bool SideBySide { get; set; }
     /// <summary>The board leaves out categories with nothing left to do (Hide empty).</summary>
     public bool HideEmptyCategories { get; set; }
+    /// <summary>The largest file you, a guest or an agent may post in a discussion, in MB.</summary>
+    public int CommentFileLimitMb { get; set; } = DefaultCommentFileLimitMb;
+    public const int DefaultCommentFileLimitMb = 10;
+    [System.Text.Json.Serialization.JsonIgnore] public long CommentFileLimitBytes => (long)Math.Max(1, CommentFileLimitMb) * 1024 * 1024;
+
+    /// <summary>The files posted in the groups' discussions (kept here, not in a project).</summary>
+    public IEnumerable<Attachment> GroupAttachments() => (GroupComments ?? []).Values.SelectMany(threads => threads.Attachments());
     /// <summary>The board lists open items by priority (most pressing first) instead of in their own order.</summary>
     public bool SortByPriority { get; set; }
     public bool MarkCopiedInProgress { get; set; }

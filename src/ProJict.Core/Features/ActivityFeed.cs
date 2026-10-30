@@ -69,12 +69,12 @@ public static class ActivityFeed
                     events.Add(ForItem(entry.At, FeedKind.History, entry.By, entry.Agent, action, detail));
                 }
                 foreach (var (comment, _) in item.Comments.Walk().Where(e => !e.Comment.Deleted))
-                    events.Add(ForItem(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", comment.Text) with { DiscussionTargetId = item.Id, CommentId = comment.Id });
+                    events.Add(ForItem(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", CommentDetail(comment)) with { DiscussionTargetId = item.Id, CommentId = comment.Id });
             }
 
             foreach (var category in project.Categories)
                 foreach (var (comment, _) in category.Comments.Walk().Where(e => !e.Comment.Deleted))
-                    events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", category.Name, comment.Text)
+                    events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", category.Name, CommentDetail(comment))
                         { Project = project, Category = category, DiscussionTargetId = category.Id, CommentId = comment.Id });
 
             foreach (var release in project.Releases.Where(r => !r.IsBaseline))
@@ -96,7 +96,7 @@ public static class ActivityFeed
 
         foreach (var group in settings.Groups)
             foreach (var (comment, _) in settings.CommentsFor(group).Walk().Where(e => !e.Comment.Deleted))
-                events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on the group", group, comment.Text) { Group = group, CommentId = comment.Id });
+                events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on the group", group, CommentDetail(comment)) { Group = group, CommentId = comment.Id });
 
         return events.OrderByDescending(e => e.At).ToList();
     }
@@ -118,6 +118,14 @@ public static class ActivityFeed
                 yield return new FeedEvent(token.ExpiresAt - ApiData.ExpiryNotice, FeedKind.Api, "ProJict", false, "API token expires soon", token.Name,
                     $"On {token.ExpiresAt:yyyy-MM-dd HH:mm}. Renew it in Settings › API before then.") { Token = token };
         }
+    }
+
+    /// <summary>The comment's text, and the files posted with it ("📎 screenshot.png").</summary>
+    private static string CommentDetail(Comment comment)
+    {
+        if (comment.Attachments is not { Count: > 0 } files) return comment.Text;
+        var names = "📎 " + string.Join(", ", files.Select(f => f.FileName));
+        return comment.Text.Trim().Length == 0 ? names : $"{comment.Text} · {names}";
     }
 
     private static bool IsDoneEntry(ActivityEntry entry) =>

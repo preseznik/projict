@@ -96,11 +96,14 @@ public sealed class Comment
     /// <summary>Removed while it had replies: the text is gone, the thread below it stays.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Deleted { get; set; }
+    /// <summary>Files and pictures posted with the comment; null (and left out of the JSON) while there are none.</summary>
+    public List<Attachment>? Attachments { get; set; }
     public List<Comment>? Replies { get; set; }
 
     public Comment DeepClone()
     {
         var copy = (Comment)MemberwiseClone();
+        copy.Attachments = Attachments?.ToList();
         copy.Replies = Replies?.Select(r => r.DeepClone()).ToList();
         return copy;
     }

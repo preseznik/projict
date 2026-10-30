@@ -15,6 +15,7 @@ public partial class App : Application
     private TrayService? _tray;
     private HotkeyService? _hotkey;
     private AgentPipeServer? _agents;
+    private NotificationService? _notifications;
     private QuickCaptureWindow? _capture;
 
     public static new App Current => (App)Application.Current;
@@ -79,6 +80,15 @@ public partial class App : Application
         _hotkey = new HotkeyService(main);
         _hotkey.Pressed += ShowQuickCapture;
         RegisterHotkey(State.Settings.Hotkey, out _);
+
+        // Windows notifications for what needs you, from the tray icon; a click brings ProJict up at the thing.
+        _notifications = new NotificationService(State, MainVm,
+            notice => _tray?.ShowNotice(notice.Title, notice.Text, () =>
+            {
+                ShowMainWindow();
+                notice.Open?.Invoke();
+            }),
+            () => MainWindow is { IsVisible: true, IsActive: true } window && window.WindowState != WindowState.Minimized);
 
         _agents = new AgentPipeServer(AgentPipeServer.PipeName(dataRoot), MainVm.AgentTools, UpdateService.CurrentVersionText);
         if (appSettings.AllowAgents) _agents.Start();

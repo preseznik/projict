@@ -48,6 +48,8 @@ public sealed partial class AttachmentViewModel
     public bool ShowsThumbnail => Thumbnail != null;
     public string SizeText => FormatSize(Model.Size);
     public string ToolTip => $"{FileName} · {SizeText}\nClick to open · right-click for more";
+    /// <summary>For comments, which have no right-click menu on their files.</summary>
+    public string ShortToolTip => $"{FileName} · {SizeText}\nClick to open";
 
     [RelayCommand] private void Open() => _owner.OpenAttachment(this);
     [RelayCommand] private void OpenExternally() => _owner.OpenAttachmentExternally(this);
@@ -89,7 +91,7 @@ public sealed partial class AttachmentViewModel
         return image;
     }
 
-    private static string FormatSize(long bytes) => bytes switch
+    public static string FormatSize(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
         < 1024 * 1024 => string.Format(CultureInfo.CurrentCulture, "{0:0} KB", bytes / 1024.0),

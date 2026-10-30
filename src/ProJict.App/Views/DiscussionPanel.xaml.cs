@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using ProJict.App.Services;
 using ProJict.App.ViewModels;
 
 namespace ProJict.App.Views;
@@ -34,6 +35,13 @@ public partial class DiscussionPanel : UserControl
 
     private void NewThread_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (DataContext is not DiscussionViewModel discussion) return;
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && ClipboardAttachments.HasAttachment())
+        {
+            discussion.PasteFiles();
+            e.Handled = true;
+            return;
+        }
         if (e.Key != Key.Enter || Keyboard.Modifiers != ModifierKeys.Control || DataContext is not DiscussionViewModel vm) return;
         if (vm.PostCommand.CanExecute(null)) vm.PostCommand.Execute(null);
         e.Handled = true;
@@ -42,7 +50,12 @@ public partial class DiscussionPanel : UserControl
     private void ReplyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (sender is not FrameworkElement { DataContext: CommentViewModel comment }) return;
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
+        if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && ClipboardAttachments.HasAttachment())
+        {
+            comment.PasteFiles();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
         {
             if (comment.SendReplyCommand.CanExecute(null)) comment.SendReplyCommand.Execute(null);
             e.Handled = true;
@@ -52,6 +65,29 @@ public partial class DiscussionPanel : UserControl
             comment.CancelReplyCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    // ───────────── Dropping files on a comment box ─────────────
+
+    private void Files_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+        e.Effects = DragDropEffects.Copy;
+        e.Handled = true;
+    }
+
+    private void NewThread_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || DataContext is not DiscussionViewModel discussion) return;
+        e.Handled = true;
+        discussion.AddFiles(paths);
+    }
+
+    private void ReplyBox_PreviewDrop(object sender, DragEventArgs e)
+    {
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || sender is not FrameworkElement { DataContext: CommentViewModel comment }) return;
+        e.Handled = true;
+        comment.AddFiles(paths);
     }
 
     /// <summary>Clicking Reply opens the reply box under the comment; put the cursor in it.</summary>

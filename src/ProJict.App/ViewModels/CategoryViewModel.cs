@@ -127,7 +127,7 @@ public sealed partial class CategoryViewModel : ObservableObject
         OnPropertyChanged(nameof(DoneAttentionToolTip));
     }
 
-    /// <summary>What waits in the folded category, and that a click shows just that.</summary>
+    /// <summary>What waits in the category, and that a click shows just that.</summary>
     public string AttentionToolTip => WaitingText(AllRows) + "\nClick to show only what waits for you.";
     /// <summary>What waits in the folded Done list.</summary>
     public string DoneAttentionToolTip => WaitingText(DoneRows);
@@ -156,8 +156,11 @@ public sealed partial class CategoryViewModel : ObservableObject
     }
 
     public bool HasUnreadComments => Owner.HasUnread(Model.Id, Model.Comments);
-    /// <summary>Folded, with something inside waiting for you (an unread comment, work to review): a red dot on the header.</summary>
-    public bool ShowAttention => !IsExpanded && AllRows.Any(r => r.NeedsAttention);
+    /// <summary>
+    /// Something inside waits for you (an unread comment, work to review): a red dot on the header, folded or not, so the
+    /// category says so even when what waits is down in its folded Done list.
+    /// </summary>
+    public bool ShowAttention => AllRows.Any(r => r.NeedsAttention);
     /// <summary>The same for the folded Done list (agents' finished work waits there for review).</summary>
     public bool ShowDoneAttention => !ShowDoneRows && DoneRows.Any(r => r.NeedsAttention);
 

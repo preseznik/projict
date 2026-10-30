@@ -121,8 +121,9 @@ public sealed class AgentTools : IMcpToolHost
             "Posts in the discussion of an item, a category or a group: a new thread, or a reply to a comment (reply_to). " +
             "Use it to ask the user questions, report progress, or answer them.",
             Schema(("text", "string", "The comment.", true), ("item", "string", "Item id.", false), ("category", "string", "Category name.", false),
-                ("group", "string", "Group name.", false), ProjectArg, ("reply_to", "string", "Id of the comment to reply to.", false)),
-            AddComment);
+                ("group", "string", "Group name.", false), ProjectArg, ("reply_to", "string", "Id of the comment to reply to.", false),
+                ("attachments", "string[]", "Files to post with the comment, e.g. a screenshot (absolute paths or relative to your working directory).", false)),
+            AddComment, filesArgument: "attachments");
         Add("read_docs", "Read notes", "Lists a project's notes (documents), or returns one note's text and attached files when a title is given.",
             Schema(ProjectArg, ("title", "string", "Note to read.", false)), ReadDocs, readOnly: true);
         Add("write_doc", "Write note",
@@ -245,8 +246,9 @@ public sealed class AgentTools : IMcpToolHost
             _caller = session;
             try
             {
-                var attachment = LocalProjects
-                    .SelectMany(p => p.Walk().SelectMany(l => l.Item.Attachments ?? []).Concat(p.Notes.SelectMany(n => n.Attachments ?? [])))
+                // Group discussions are outside a token limited to some projects.
+                var attachment = LocalProjects.SelectMany(p => p.Attachments())
+                    .Concat(session.Projects == null ? _state.Settings.GroupAttachments() : [])
                     .FirstOrDefault(a => a.Id == id);
                 return attachment == null ? ((Attachment, string)?)null : (attachment, _state.Store.AttachmentPath(attachment));
             }
@@ -787,11 +789,18 @@ public sealed class AgentTools : IMcpToolHost
             replyTo = matches.Count == 1 ? matches[0].Id
                 : throw new McpToolException(matches.Count == 0 ? $"No comment {replyText} on this {target.Label}; list_comments shows the ids." : "Give more of the comment id.");
         }
+        var limit = _state.Settings.CommentFileLimitBytes;
+        if (files.FirstOrDefault(f => f.Size > limit) is { } big)
+            throw new McpToolException($"{big.FileName} is {AttachmentViewModel.FormatSize(big.Size)}; files in comments can be up to {AttachmentViewModel.FormatSize(limit)} " +
+                                       "(the user's setting). Attach it to the item instead (attach_file), or send a smaller file.");
         var comment = NewComment(session, text);
+        if (files.Count > 0) comment.Attachments = files;
         if (target.Group != null) _state.PostGroupComment(target.Group, comment, replyTo);
         else _main.GetProjectViewModel(target.Project!).PostComment(target.TargetId!.Value, comment, replyTo);
         _state.StatusText = $"{session.AgentName} {(replyTo == null ? "commented on" : "replied on")} {target.Label}.";
-        return Json(new JsonObject { ["id"] = ShortId(comment.Id), ["on"] = target.Label });
+        var result = new JsonObject { ["id"] = ShortId(comment.Id), ["on"] = target.Label };
+        if (files.Count > 0) result["attached"] = files.Count;
+        return Json(result);
     }
 
     private static Comment NewComment(McpSession session, string text) =>
@@ -1122,7 +1131,7 @@ public sealed class AgentTools : IMcpToolHost
         return json;
     }
 
-    private static JsonObject CommentJson(Comment comment, bool nested)
+    private JsonObject CommentJson(Comment comment, bool nested)
     {
         var json = new JsonObject
         {
@@ -1132,6 +1141,7 @@ public sealed class AgentTools : IMcpToolHost
             ["text"] = comment.Deleted ? "(deleted)" : comment.Text,
         };
         if (comment.Agent) json["agent"] = true;
+        if (comment.Attachments is { Count: > 0 } posted) json["attachments"] = Paths(posted);
         if (nested && comment.Replies is { Count: > 0 } replies)
             json["replies"] = new JsonArray(replies.Select(r => (JsonNode)CommentJson(r, nested: true)).ToArray());
         return json;

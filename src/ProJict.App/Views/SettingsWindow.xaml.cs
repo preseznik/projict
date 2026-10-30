@@ -9,6 +9,7 @@ using ProJict.App.ViewModels;
 using ProJict.Core.Agents;
 using ProJict.Core.Export;
 using ProJict.Core.Model;
+using ProJict.Core.Storage;
 
 namespace ProJict.App.Views;
 
@@ -43,6 +44,14 @@ public partial class SettingsWindow : Window
         foreach (var box in AgentPriorities.Children.OfType<CheckBox>())
             box.IsChecked = s.AgentPriorities.Contains(Enum.Parse<Priority>((string)box.Tag));
         UserName.Text = state.UserName;
+        CommentFileLimit.Text = s.CommentFileLimitMb.ToString();
+        var notifications = state.AppSettings.Notifications;
+        NotifyEnabled.IsChecked = notifications.Enabled;
+        foreach (var box in NotifyKinds.Children.OfType<CheckBox>())
+            box.IsChecked = notifications.Allows(Enum.Parse<NotificationKind>((string)box.Tag));
+        var muted = state.Projects.Where(p => notifications.MutedProjects.Contains(p.Id)).Select(p => p.Name).ToList();
+        MutedText.Text = muted.Count == 0 ? "" : $"Muted: {string.Join(", ", muted)} (unmute from the project's right-click menu).";
+        MutedText.Visibility = muted.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         AgentClient.ItemsSource = AgentSetups(state);
         AgentClient.SelectedIndex = 0;
         GitHubAccount.Text = s.GitHubAccount ?? "";
@@ -88,9 +97,12 @@ public partial class SettingsWindow : Window
         AgentsSummary.Text = AllowAgents.IsChecked != true ? "Off: agents can't connect"
             : "On · they may work on " + (AgentAccess.Describe(priorities) ?? "no items (they can still read and comment)");
         ApiSummary.Text = ApiStatus.Text;
+        var kinds = NotifyKinds.Children.OfType<CheckBox>().Where(b => b.IsChecked == true).Select(b => (string)b.Content).ToList();
+        NotificationsSummary.Text = NotifyEnabled.IsChecked != true ? "Off" : kinds.Count == 0 ? "On, but nothing is chosen" : "On · " + string.Join(", ", kinds);
         BoardSummary.Text = $"{(Theme.SelectedItem as ComboBoxItem)?.Content} theme · stale after {StaleDays.Text.Trim()} days" +
                             (MarkInProgress.IsChecked == true ? " · copying a prompt marks items in progress" : "");
-        CommentsSummary.Text = "You sign as " + (string.IsNullOrWhiteSpace(UserName.Text) ? Environment.UserName : UserName.Text.Trim());
+        CommentsSummary.Text = "You sign as " + (string.IsNullOrWhiteSpace(UserName.Text) ? Environment.UserName : UserName.Text.Trim()) +
+                               $" · files in comments up to {CommentFileLimit.Text.Trim()} MB";
         CaptureSummary.Text = (string.IsNullOrEmpty(Hotkey.Text) ? "No hotkey" : "Hotkey " + Hotkey.Text) + " · " +
                               (CloseToTray.IsChecked == true ? "closing keeps it in the tray" : "closing quits");
         GitHubSummary.Text = string.IsNullOrWhiteSpace(GitHubAccount.Text) ? "No account"
@@ -328,6 +340,11 @@ public partial class SettingsWindow : Window
             ShowError("Stale days must be a whole number (0 turns it off).", BoardSection);
             return;
         }
+        if (!int.TryParse(CommentFileLimit.Text, out var fileLimit) || fileLimit is < 1 or > 100)
+        {
+            ShowError("Files in comments can be limited to 1 to 100 MB.", CommentsSection);
+            return;
+        }
         var mirrorOn = MirrorEnabled.IsChecked == true;
         if (mirrorOn && string.IsNullOrWhiteSpace(MirrorFolder.Text))
         {
@@ -342,6 +359,11 @@ public partial class SettingsWindow : Window
         s.CloseToTray = CloseToTray.IsChecked == true;
         s.MarkCopiedInProgress = MarkInProgress.IsChecked == true;
         s.StaleDays = stale;
+        s.CommentFileLimitMb = fileLimit;
+        var notify = _state.AppSettings.Notifications;
+        notify.Enabled = NotifyEnabled.IsChecked == true;
+        foreach (var box in NotifyKinds.Children.OfType<CheckBox>())
+            typeof(NotificationSettings).GetProperty((string)box.Tag)!.SetValue(notify, box.IsChecked == true);
         s.Theme = ((ComboBoxItem)Theme.SelectedItem).Content.ToString()!;
         s.VsCodePath = string.IsNullOrWhiteSpace(VsCodePath.Text) ? null : VsCodePath.Text.Trim();
         var groups = Groups.Text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

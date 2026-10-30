@@ -94,6 +94,9 @@ public static class ProjectExtensions
     }
 
     /// <summary>Files attached to the project's items and notes.</summary>
+    /// <summary>Every file in the project: on items, on notes and posted in discussions.</summary>
     public static IEnumerable<Attachment> Attachments(this Project project) =>
-        project.Walk().SelectMany(l => l.Item.Attachments ?? []).Concat(project.Notes.SelectMany(n => n.Attachments ?? []));
+        project.Walk().SelectMany(l => (l.Item.Attachments ?? []).Concat(l.Item.Comments.Attachments()))
+            .Concat(project.Categories.SelectMany(c => c.Comments.Attachments()))
+            .Concat(project.Notes.SelectMany(n => n.Attachments ?? []));
 }
