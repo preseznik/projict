@@ -82,6 +82,10 @@ public sealed partial class MainViewModel : ObservableObject
         Sharing = new Services.Sharing.SharingStore(state.PersistsSettings ? ProJict.Core.Sharing.SharingData.DefaultPath : null);
         Host = new Services.Sharing.HostService(state, this, Sharing);
         Guest = new Services.Sharing.GuestService(state, this, Sharing);
+        AgentTools = new Services.AgentTools(state, this, System.Windows.Threading.Dispatcher.CurrentDispatcher);
+        ApiStore = new Services.Api.ApiStore(state.PersistsSettings ? ProJict.Core.Api.ApiData.DefaultPath : null);
+        Api = new Services.Api.ApiServer(AgentTools, ApiStore, () => State.Projects.Where(p => p.Remote == null).ToList(),
+            Services.UpdateService.CurrentVersionText);
         Host.Changed += () =>
         {
             OnPropertyChanged(nameof(PendingJoin));
@@ -93,6 +97,10 @@ public sealed partial class MainViewModel : ObservableObject
         };
         Dashboard = new DashboardViewModel(state, this);
         Feed = new FeedViewModel(state, this);
+        Api.Changed += () =>
+        {
+            if (CurrentView is FeedViewModel) Feed.Refresh();
+        };
         Agents.Changed += () =>
         {
             foreach (var item in ProjectItems) item.Refresh();
@@ -165,6 +173,11 @@ public sealed partial class MainViewModel : ObservableObject
     public Services.Sharing.HostService Host { get; }
     /// <summary>Other ProJict apps' projects shown here.</summary>
     public Services.Sharing.GuestService Guest { get; }
+    /// <summary>What AI agents can do in ProJict, over MCP and the API.</summary>
+    public Services.AgentTools AgentTools { get; }
+    public Services.Api.ApiStore ApiStore { get; }
+    /// <summary>ProJict's API (Settings › API).</summary>
+    public Services.Api.ApiServer Api { get; }
     public DashboardViewModel Dashboard { get; }
     public FeedViewModel Feed { get; }
     /// <summary>Which AI agents are connected and where they work.</summary>
@@ -201,6 +214,21 @@ public sealed partial class MainViewModel : ObservableObject
     // ───────────── Sharing ─────────────
 
     private Views.SharingWindow? _sharingWindow;
+    private Views.ApiWindow? _apiWindow;
+
+    /// <summary>The API window, e.g. from the Feed; Settings opens it as a dialog of its own.</summary>
+    [RelayCommand]
+    private void OpenApi()
+    {
+        if (_apiWindow is { IsLoaded: true })
+        {
+            _apiWindow.Activate();
+            return;
+        }
+        _apiWindow = new Views.ApiWindow(this) { Owner = Application.Current.MainWindow };
+        _apiWindow.Closed += (_, _) => _apiWindow = null;
+        _apiWindow.Show();
+    }
 
     /// <summary>The oldest request to join your ProJict, shown in a bar until you answer it.</summary>
     public Services.Sharing.JoinRequest? PendingJoin => Host.Requests.FirstOrDefault();

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.15 (2026-10-30)
+
+- **API** (Settings › API): another way for AI agents, scripts and tools such as n8n to work in ProJict. It offers a REST API, described in OpenAPI at `/api/v1/openapi.json`, and the same tools as the MCP over HTTP at `/mcp`, so MCP clients on another computer or web-based connectors can use ProJict too. Off until you turn it on.
+- **Tokens**: every request needs one. Make a token with a name (it signs everything done with it), read-and-write or read-only access, all projects or only some, and an expiry of 7, 30 or 90 days or 1 year. ProJict shows it once and keeps only a hash. The list shows when and from where each token was last used, with **Renew** and **Revoke**, and the Feed tells you a week before a token expires.
+- Work done through the API follows the same rules as local agents: your AI agent limits by priority apply, nothing can be deleted, and finished items wait for your review. Files are uploaded and downloaded through the API, never read from paths on your computer.
+- AI agents (over MCP or the API) can set a project's details: repo folder, GitHub link, description, standing instructions, and how it's shipped. The REST call is `PATCH /api/v1/projects/{project}`. A changed repo folder, link, description or instructions is one Ctrl+Z. When an agent changes the shipping steps or how-to, Details › Shipping says so, and every ship request waits for your approval until you click **Looks good**. Only you can let steps run without asking.
+- By default only this computer can connect. **Also let other devices on my network connect** switches to HTTPS with ProJict's own certificate (save it to trust it, or check its fingerprint). Web pages in a browser can't call the API, and an address that sends 10 wrong tokens is locked out for 15 minutes.
+
 ## 0.1.14 (2026-10-29)
 
 - **Ship** button in a project's header (or right-click › Ship…): ask an AI agent to commit, build, package, push and/or release the project. The agent posts its plan on the board (version, what's in it, items still waiting for your review, what it will run) and runs nothing until you **Approve** it; then it reports each step under the plan. Push and release always need your approval; commit, build and package can run without asking if you allow that. Requests show in the sidebar, on the dashboard and in the Feed.

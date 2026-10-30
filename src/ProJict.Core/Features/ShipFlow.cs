@@ -18,7 +18,37 @@ public static class ShipFlow
     public static bool Publishes(ShipStep step) => step is ShipStep.Push or ShipStep.Release;
 
     public static bool NeedsApproval(IEnumerable<ShipStep> steps, ShipSettings settings) =>
-        !settings.LocalWithoutApproval || steps.Any(Publishes);
+        !settings.LocalWithoutApproval || settings.ChangedBy != null || steps.Any(Publishes);
+
+    /// <summary>
+    /// An AI agent changes the steps the project has and/or how it's shipped. Not while a request is open, and until you
+    /// check the change every request needs your approval. "Without approval" stays yours to set.
+    /// </summary>
+    public static void AgentChange(Project project, IReadOnlyCollection<ShipStep>? steps, string? howTo, string by, DateTime now)
+    {
+        CheckAgentChange(project, steps);
+        var settings = project.Shipping ??= new ShipSettings();
+        if (steps != null) settings.Steps = steps.Distinct().Order().ToList();
+        if (howTo != null) settings.HowTo = howTo.Trim().Length == 0 ? null : howTo;
+        settings.ChangedBy = by;
+        settings.ChangedAt = now;
+    }
+
+    /// <summary>Throws when an agent may not change how the project is shipped right now.</summary>
+    public static void CheckAgentChange(Project project, IReadOnlyCollection<ShipStep>? steps)
+    {
+        if (project.IsInbox) throw new InvalidOperationException("The Inbox isn't shipped.");
+        if (project.OpenShip is { } open)
+            throw new InvalidOperationException($"A ship request is open ({Describe(open.Steps)}, {StateName(open.State)}): change how {project.Name} is shipped once it's finished.");
+        if (steps is { Count: 0 }) throw new InvalidOperationException("Give at least one step.");
+    }
+
+    /// <summary>You checked what an agent changed.</summary>
+    public static void AcceptChange(ShipSettings settings)
+    {
+        settings.ChangedBy = null;
+        settings.ChangedAt = null;
+    }
 
     public static string Name(ShipStep step) => step.ToString().ToLowerInvariant();
 

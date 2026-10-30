@@ -69,7 +69,7 @@ claude mcp add --scope user projict -- "C:\Users\<you>\AppData\Local\Programs\Pr
 
 Other MCP clients run the same program with `--mcp`. If ProJict isn't running, it starts in the tray.
 
-- **What agents can do:** list projects and items, check out an item, complete it with a resolution and files, add items and sub-items, attach files, comment, write notes (for example a status report) and draft release notes. They can't delete anything, the board updates as they work, and Ctrl+Z undoes any change.
+- **What agents can do:** list projects and items, check out an item, complete it with a resolution and files, add items and sub-items, attach files, comment, write notes (for example a status report), draft release notes, and keep a project's details up to date (repo folder, GitHub link, description, instructions, and how it's shipped). They can't delete anything, the board updates as they work, and Ctrl+Z undoes their changes.
 - **Which items:** agents work only on items you give a priority (urgent, high, medium or low) by default; choose which under **Settings → AI agents**, including items without a priority. Items on hold are always left alone. Agents still see and can comment on the other items, for example to ask you, but can't check them out, change or complete them. A sub-item without a priority of its own goes by the item it belongs to.
 - **Check-out:** while an agent has an item checked out (its name shows on the item), other agents can't change it, only comment on it. Taking it over is possible but is written to the item's history. If an agent stops halfway, right-click the item › **Release check-out**. You can always edit any item yourself.
 - **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → Comments & history**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
@@ -78,11 +78,39 @@ Other MCP clients run the same program with `--mcp`. If ProJict isn't running, i
 - **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
 - Turn agent access off under **Settings → AI agents**. Only programs running under your Windows account can connect; nothing is opened to the network.
 
+### API
+
+The API is a second way in, for tools that can't start ProJict.exe: scripts, automation tools such as n8n or Zapier, and MCP clients on another computer. Turn it on under **Settings → API → API & tokens…**. It offers:
+
+- a REST API at `http://127.0.0.1:47614/api/v1`, described in OpenAPI at `/api/v1/openapi.json`;
+- the same tools as the MCP, over HTTP at `http://127.0.0.1:47614/mcp`.
+
+Every request needs a token: `Authorization: Bearer pjt_…`. Make one in the same window:
+
+- **Name:** what will use it. Everything done with the token is signed with this name.
+- **Access:** read and write, or read only.
+- **Projects:** all of yours, or only some.
+- **Expiry:** 7, 30 or 90 days, or 1 year.
+
+ProJict shows the token once and keeps only a hash of it. The token list shows when and from where each token was last used, with **Renew** (a new token with the same settings) and **Revoke**. The Feed reminds you a week before a token expires.
+
+```
+curl -H "Authorization: Bearer pjt_…" http://127.0.0.1:47614/api/v1/projects/MyGame/items?priority=high
+claude mcp add --transport http projict http://127.0.0.1:47614/mcp --header "Authorization: Bearer pjt_…"
+```
+
+- **Same rules as agents:** your limits by priority apply, nothing can be deleted, and what's finished waits for your review. Files are sent as uploads (JSON `{ "name", "data" }` in base64, or a multipart form) and come back as download links. A token can't read files on your computer that aren't attached in ProJict.
+- **Network:** by default only this computer can connect. **Also let other devices on my network connect** serves HTTPS with ProJict's own certificate, made for this computer's name. Clients either trust it (**Save certificate…**) or check its fingerprint. Windows may ask whether ProJict may use the network: allow private networks only.
+- **Internet:** ProJict opens nothing to the internet. To reach it from web-based connectors (claude.ai, cloud automations), run a tunnel such as [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) in front of it, and use a token limited to the projects it needs.
+- **Protection:** web pages in a browser can't call the API, an address that sends 10 wrong tokens is locked out for 15 minutes, and a token may make up to 600 requests a minute.
+
 ### Shipping
 
 Click **Ship** in a project's header (or right-click the project › **Ship…**) and tick what you want done: commit, build, package, push and/or release. An AI agent working in the project sees the request and posts its plan on the board: the version, what's in it, the items still waiting for your review and what it will run. **Approve** or **Decline** it there; nothing runs before you approve. The agent then runs the steps and reports each one under the plan, and the request shows in the sidebar, on the dashboard and in the Feed.
 
 How a project is shipped goes in its **Details → Shipping**: the steps it has and the instructions the agent follows (e.g. bump the version, run the build script, test, commit, push, publish the release). Push and release always need your approval; commit, build and package can run without asking if you tick that for the project.
+
+Agents can write the steps and instructions too, for example after looking at how the project is built. Details → Shipping then says which agent changed them. Until you click **Looks good**, every ship request waits for your approval, so nothing an agent wrote runs unseen. Ctrl+Z doesn't undo shipping settings. Only you can let steps run without asking.
 
 ## Sharing
 

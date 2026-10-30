@@ -45,6 +45,7 @@ public sealed partial class FeedViewModel : ObservableObject
         new("History (check-outs, reviews…)", [FeedKind.History]),
         new("Releases, shipping & notes", [FeedKind.Release, FeedKind.Ship, FeedKind.Note]),
         new("Projects", [FeedKind.Project]),
+        new("API tokens", [FeedKind.Api]),
     ];
 
     public static IReadOnlyList<FeedPeriodOption> Periods { get; } =
@@ -86,7 +87,10 @@ public sealed partial class FeedViewModel : ObservableObject
     /// <summary>Rebuilds the timeline from the workspace (on open, and when something changes while it shows).</summary>
     public void Refresh()
     {
-        _all = ActivityFeed.Build(_state.Projects, _state.Settings, _state.UserName);
+        List<ProJict.Core.Api.ApiToken> tokens;
+        lock (_main.ApiStore.Sync) tokens = [.. _main.ApiStore.Data.Tokens];
+        _all = [.. ActivityFeed.Build(_state.Projects, _state.Settings, _state.UserName)
+            .Concat(ActivityFeed.ApiTokens(tokens, DateTime.Now, _state.UserName)).OrderByDescending(e => e.At)];
         ProjectChoices = [AllProjects, .. _state.Projects.Select(p => p.Name).Order(StringComparer.CurrentCultureIgnoreCase)];
         WhoChoices = [Everyone, People, Agents, .. _all.Select(e => e.Who).Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase)];
         OnPropertyChanged(nameof(ProjectChoices));
@@ -154,6 +158,11 @@ public sealed partial class FeedViewModel : ObservableObject
     /// <summary>Goes to what the entry is about: the item (and its discussion for a comment), the release, the note or the project.</summary>
     public void Open(FeedEvent e)
     {
+        if (e.Kind == FeedKind.Api)
+        {
+            _main.OpenApiCommand.Execute(null);
+            return;
+        }
         if (e.Group != null)
         {
             _main.OpenDiscussion(DiscussionTarget.ForGroup(e.Group));
@@ -205,6 +214,7 @@ public sealed partial class FeedRowViewModel(FeedEvent e, string? dayHeader, Fee
         FeedKind.Note => "",
         FeedKind.Ship => "",
         FeedKind.Project => "",
+        FeedKind.Api => "",
         _ => Event.Agent ? "" : "",
     };
 

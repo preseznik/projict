@@ -22,10 +22,22 @@ public sealed class McpSession
     /// <summary>Set by the agent (set_label) so parallel sessions of the same client can be told apart.</summary>
     public string? Label { get; set; }
 
+    /// <summary>The name it signs with whatever the client calls itself: an API token's name.</summary>
+    public string? SignAs { get; init; }
+    /// <summary>Connected over the API rather than the local pipe: files come as uploads, never as paths on this computer.</summary>
+    public bool Remote { get; init; }
+    /// <summary>A read-only API token: reading only.</summary>
+    public bool ReadOnly { get; init; }
+    /// <summary>The projects an API token reaches; null for all.</summary>
+    public IReadOnlySet<Guid>? Projects { get; init; }
+    /// <summary>Where the API answers ("http://127.0.0.1:47614"), for links to attachments; set per request.</summary>
+    public string? BaseUrl { get; set; }
+
     /// <summary>How the agent signs its work: "Claude Code" for a client named "claude-code", plus its label if it set one.</summary>
     public string AgentName => string.IsNullOrWhiteSpace(Label) ? ClientDisplayName : $"{ClientDisplayName} · {Label.Trim()}";
 
-    private string ClientDisplayName => !string.IsNullOrWhiteSpace(ClientTitle) ? ClientTitle.Trim()
+    private string ClientDisplayName => !string.IsNullOrWhiteSpace(SignAs) ? SignAs.Trim()
+        : !string.IsNullOrWhiteSpace(ClientTitle) ? ClientTitle.Trim()
         : !string.IsNullOrWhiteSpace(ClientName) ? Prettify(ClientName) : "AI agent";
 
     private static string Prettify(string name) => name.Contains(' ') ? name.Trim() :
@@ -44,8 +56,14 @@ public interface IMcpToolHost
     Task<string> CallAsync(McpSession session, string name, JsonElement arguments);
 }
 
+/// <summary>What kind of problem a tool reports; the API answers with the matching HTTP status.</summary>
+public enum ToolProblem { Invalid, NotFound, Forbidden, Conflict }
+
 /// <summary>A tool failed in a way the agent can act on (unknown item, missing argument, …).</summary>
-public sealed class McpToolException(string message) : Exception(message);
+public sealed class McpToolException(string message, ToolProblem problem = ToolProblem.Invalid) : Exception(message)
+{
+    public ToolProblem Problem { get; } = problem;
+}
 
 /// <summary>
 /// The part of the Model Context Protocol ProJict needs: JSON-RPC 2.0 messages, one per line (the stdio transport),

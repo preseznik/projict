@@ -80,7 +80,7 @@ public partial class App : Application
         _hotkey.Pressed += ShowQuickCapture;
         RegisterHotkey(State.Settings.Hotkey, out _);
 
-        _agents = new AgentPipeServer(AgentPipeServer.PipeName(dataRoot), new AgentTools(State, MainVm, Dispatcher), UpdateService.CurrentVersionText);
+        _agents = new AgentPipeServer(AgentPipeServer.PipeName(dataRoot), MainVm.AgentTools, UpdateService.CurrentVersionText);
         if (appSettings.AllowAgents) _agents.Start();
 
         // Started for an AI agent (by the --mcp bridge): stay in the tray until the user opens the window.
@@ -101,6 +101,7 @@ public partial class App : Application
             _ = MainVm.GitHub.RefreshAsync(force: false);
         _ = MainVm.Issues.SyncAllAsync();
         if (MainVm.Sharing.Data.Enabled) MainVm.Host.Start();
+        if (MainVm.ApiStore.Data.Enabled) _ = MainVm.Api.StartAsync();
         MainVm.Guest.ConnectKnownHosts();
     }
 
@@ -213,7 +214,13 @@ public partial class App : Application
         catch (Exception) { }
         State?.SaveAppSettings();
         _agents?.Dispose();
-        if (MainVm != null) MainVm.Host.Stop();
+        if (MainVm != null)
+        {
+            MainVm.Host.Stop();
+            // Off the UI thread, so stopping doesn't wait for it.
+            try { Task.Run(MainVm.Api.StopAsync).Wait(TimeSpan.FromSeconds(3)); }
+            catch (Exception) { }
+        }
         _hotkey?.Dispose();
         _tray?.Dispose();
         _single?.Dispose();

@@ -21,6 +21,14 @@ public sealed class ShipSettings
     /// <summary>Commit, build and package may run without your approval; push and release always ask.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool LocalWithoutApproval { get; set; }
+    /// <summary>
+    /// The AI agent that changed the steps or the how-to, until you've checked the change; meanwhile every request
+    /// needs your approval, so nothing an agent wrote runs unseen.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ChangedBy { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTime? ChangedAt { get; set; }
 }
 
 /// <summary>

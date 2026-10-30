@@ -763,6 +763,16 @@
                             <CheckBox Content="Commit, build and package without asking me (push and release always ask)" IsChecked="{Binding ShipLocalWithoutApproval}" Margin="0,8,0,0" />
                             <TextBox Text="{Binding ShipHowTo, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" Margin="0,8,0,0"
                                      MinHeight="100" VerticalContentAlignment="Top" FontFamily="{StaticResource MonoFont}" FontSize="13" AutomationProperties.Name="How to ship" />
+                            <!-- An agent changed the steps or how-to: shown until you've checked it -->
+                            <Border x:Name="ShipChangeCard" Style="{StaticResource Card}" Padding="10,8" Margin="0,6,0,0"
+                                    Visibility="{Binding HasShipChange, Converter={StaticResource BoolToVis}}">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="Looks good" Margin="10,0,0,0" VerticalAlignment="Center" Command="{Binding AcceptShipChangeCommand}"
+                                            ToolTip="Ship requests can run without asking again where you allowed that" />
+                                    <TextBlock Text="{Binding ShipChangeText}" TextWrapping="Wrap" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DockPanel>
+                            </Border>
                             <TextBlock Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
                                        Text="How to ship it: what an AI agent does when you ask (Ship button), e.g. bump the version in …, run build.ps1, test, commit, push, publish the GitHub release. Untick the steps this project doesn't have." />
                         </StackPanel>

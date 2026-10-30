@@ -1,9 +1,10 @@
+using ProJict.Core.Api;
 using ProJict.Core.Model;
 using ProJict.Core.Storage;
 
 namespace ProJict.Core.Features;
 
-public enum FeedKind { Added, Done, History, Comment, Release, Note, Project, Ship }
+public enum FeedKind { Added, Done, History, Comment, Release, Note, Project, Ship, Api }
 
 /// <summary>
 /// Something that happened in ProJict: who did it, what they did (<see cref="Action"/>), to what (<see cref="Subject"/>),
@@ -20,6 +21,7 @@ public sealed record FeedEvent(DateTime At, FeedKind Kind, string Who, bool Agen
     public NoteDoc? Note { get; init; }
     public Release? Release { get; init; }
     public ShipRequest? Ship { get; init; }
+    public ApiToken? Token { get; init; }
 
     /// <summary>Everything the Feed's search looks in.</summary>
     public string SearchText => $"{Who} {Action} {Subject} {Detail} {Project?.Name} {Category?.Name} {Group}";
@@ -95,6 +97,25 @@ public static class ActivityFeed
                 events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on the group", group, comment.Text) { Group = group });
 
         return events.OrderByDescending(e => e.At).ToList();
+    }
+
+    /// <summary>API tokens you made or renewed, and the ones about to expire (a week ahead) or expired.</summary>
+    public static IEnumerable<FeedEvent> ApiTokens(IEnumerable<ApiToken> tokens, DateTime now, string userName)
+    {
+        foreach (var token in tokens)
+        {
+            var until = $"Until {token.ExpiresAt:yyyy-MM-dd}";
+            yield return new FeedEvent(token.CreatedAt, FeedKind.Api, userName, false, "made an API token", token.Name,
+                $"{(token.ReadOnly ? "Read only" : "Read and write")}, {(token.Projects == null ? "all projects" : "some projects")}. {until}.") { Token = token };
+            if (token.RenewedAt is { } renewed)
+                yield return new FeedEvent(renewed, FeedKind.Api, userName, false, "renewed an API token", token.Name, until + ".") { Token = token };
+            if (token.IsExpired(now))
+                yield return new FeedEvent(token.ExpiresAt, FeedKind.Api, "ProJict", false, "API token expired", token.Name,
+                    $"On {token.ExpiresAt:yyyy-MM-dd HH:mm}. Renew it in Settings › API, or revoke it.") { Token = token };
+            else if (now >= token.ExpiresAt - ApiData.ExpiryNotice)
+                yield return new FeedEvent(token.ExpiresAt - ApiData.ExpiryNotice, FeedKind.Api, "ProJict", false, "API token expires soon", token.Name,
+                    $"On {token.ExpiresAt:yyyy-MM-dd HH:mm}. Renew it in Settings › API before then.") { Token = token };
+        }
     }
 
     private static bool IsDoneEntry(ActivityEntry entry) =>

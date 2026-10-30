@@ -142,6 +142,14 @@
             </StackPanel>
         </Expander>
 
+        <TextBlock Text="API" Style="{StaticResource SectionTitle}" />
+        <DockPanel>
+            <Button DockPanel.Dock="Right" Content="API &amp; tokens…" MinWidth="120" Margin="12,0,0,0" VerticalAlignment="Top" Click="OpenApi_Click" />
+            <TextBlock x:Name="ApiStatus" TextWrapping="Wrap" VerticalAlignment="Center" />
+        </DockPanel>
+        <TextBlock Style="{StaticResource MutedText}" Margin="2,4,0,0" TextWrapping="Wrap"
+                   Text="Another way for agents, scripts and tools such as n8n to work in ProJict: a REST API and MCP over HTTP, with tokens you make that expire. Changes there apply right away." />
+
         <TextBlock Text="Updates" Style="{StaticResource SectionTitle}" />
         <CheckBox x:Name="CheckUpdates" Content="Check for updates when ProJict starts, and every 4 hours while it's open" />
         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">

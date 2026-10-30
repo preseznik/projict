@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using ProJict.App.Services;
+using ProJict.App.ViewModels;
 using ProJict.Core.Export;
 using ProJict.Core.Model;
 
@@ -39,6 +40,13 @@ public partial class SettingsWindow : Window
         UseGitHubCli.IsChecked = state.AppSettings.UseGitHubCliSignIn;
         VersionText.Text = $"ProJict {UpdateService.CurrentVersionText}";
         UpdatePanel.DataContext = App.Current.MainVm.Updates;
+        ApiStatus.Text = ApiViewModel.StatusOf(App.Current.MainVm.Api);
+    }
+
+    private void OpenApi_Click(object sender, RoutedEventArgs e)
+    {
+        new ApiWindow(App.Current.MainVm) { Owner = this }.ShowDialog();
+        ApiStatus.Text = ApiViewModel.StatusOf(App.Current.MainVm.Api);
     }
 
     /// <summary>How to add ProJict to one AI agent: what to run or paste, and where.</summary>

@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Windows.Threading;
 using ProJict.App.ViewModels;
 using ProJict.Core.Agents;
+using ProJict.Core.Api;
 using ProJict.Core.Features;
 using ProJict.Core.Import;
 using ProJict.Core.Model;
@@ -28,6 +29,8 @@ public sealed class AgentTools : IMcpToolHost
     private readonly Dictionary<string, (Handler Run, string? FilesArgument)> _handlers = [];
     private readonly List<McpTool> _tools = [];
     private readonly List<McpSession> _live = [];
+    /// <summary>The session whose call is running: calls run one at a time on the UI thread.</summary>
+    private McpSession? _caller;
 
     public AgentTools(AppState state, MainViewModel main, Dispatcher dispatcher)
     {
@@ -40,7 +43,20 @@ public sealed class AgentTools : IMcpToolHost
         Add("current_project", "Current project",
             "Finds the project for a folder (by default your working directory): by its local repo folder, the git remote, or the folder name. " +
             "Returns the project's categories and the user's standing instructions for it.",
-            Schema(("path", "string", "Folder to look up; defaults to the agent's working directory.", false)), CurrentProject, readOnly: true);
+            Schema(("path", "string", "Folder to look up; defaults to the agent's working directory.", false),
+                ("project", "string", "Project name or key, instead of a folder.", false)), CurrentProject, readOnly: true);
+        Add("update_project", "Update project details",
+            "Changes a project's details: its local repo folder, GitHub link, description, standing instructions for agents, and how it's " +
+            "shipped (the steps it has and the how-to an agent follows). Give only what changes; an empty string clears a field. " +
+            "After you change the steps or how-to, every ship request needs the user's approval until they've checked your change.",
+            Schema(ProjectArg,
+                ("repo_path", "string", "The project's folder on the ProJict computer (it must exist).", false),
+                ("github_url", "string", "The GitHub repository, e.g. https://github.com/owner/name.", false),
+                ("description", "string", "What the project is.", false),
+                ("instructions", "string", "Standing instructions for agents and Copy prompt: engine version, conventions, how to test…", false),
+                ("ship_steps", "string[]", "The steps this project has, from commit, build, package, push and release (replaces the list).", false),
+                ("ship_how_to", "string", "How to ship it: what an agent does for each step, e.g. bump the version in …, run build.ps1, test, commit, push, publish the release.", false)),
+            UpdateProject);
         Add("set_label", "Set your label",
             "Adds a short label to the name you sign with (e.g. the task or folder), so the user can tell parallel sessions apart: \"Claude Code · login fix\".",
             Schema(("label", "string", "A few words; empty removes the label.", true)), SetLabel);
@@ -136,8 +152,12 @@ public sealed class AgentTools : IMcpToolHost
 
     public IReadOnlyList<McpTool> Tools => _tools;
 
-    /// <summary>Your own projects: projects shown from another ProJict aren't open to agents.</summary>
-    private List<Project> LocalProjects => _state.Projects.Where(p => p.Remote == null).ToList();
+    /// <summary>
+    /// Your own projects (projects shown from another ProJict aren't open to agents), and of those only the ones the
+    /// caller's API token reaches.
+    /// </summary>
+    private List<Project> LocalProjects =>
+        _state.Projects.Where(p => p.Remote == null && (_caller?.Projects is not { } only || only.Contains(p.Id))).ToList();
 
     public string Instructions =>
         "ProJict is the user's to-do list app: projects contain categories, categories contain items (with sub-items, tags such as BUG or ADD, " +
@@ -149,6 +169,7 @@ public sealed class AgentTools : IMcpToolHost
         "the others and items on hold are off limits: list_items leaves them out, and you may read and comment on them but not check them out, " +
         "change or complete them. Ask the user questions or report progress with add_comment, and check list_comments for their " +
         "answers. File problems you notice with add_item, and put documentation or reports for people in a note with write_doc. " +
+        "Keep a project's details (repo folder, GitHub link, description, instructions, how it's shipped) up to date with update_project. " +
         "Items with a gitHubIssue stand for that GitHub issue: mention \"Fixes #<number>\" in the commit or pull request that resolves one. " +
         "When a project shows a shipRequest, the user wants it committed, built, packaged, pushed or released: read it with ship_request, post your " +
         "plan with plan_ship and wait for their approval in ProJict; only then run the steps, report each with report_ship and end with finish_ship " +
@@ -175,16 +196,49 @@ public sealed class AgentTools : IMcpToolHost
     {
         var (run, filesArgument) = _handlers[name];
         var args = new Args(arguments);
+        if (session.ReadOnly && Changes(name, arguments))
+            throw new McpToolException($"This API token is read only, so it can't {name.Replace('_', ' ')}. The user can make a token that may change things in ProJict (Settings › API).",
+                ToolProblem.Forbidden);
         // Files are copied off the UI thread; the edit itself then runs on it.
-        var files = filesArgument == null ? [] : await ImportFilesAsync(args.Strings(filesArgument), session.WorkingDirectory);
+        var files = filesArgument == null ? []
+            : session.Remote ? await StoreUploadsAsync(args.Uploads(filesArgument))
+            : await ImportFilesAsync(args.Strings(filesArgument), session.WorkingDirectory);
         var (text, error) = await _dispatcher.InvokeAsync(() =>
         {
+            _caller = session;
             try { return ((string?)run(session, args, files), (Exception?)null); }
             catch (Exception ex) { return (null, ex); }
+            finally { _caller = null; }
         });
         if (error != null) ExceptionDispatchInfo.Throw(error);
         return text!;
     }
+
+    /// <summary>Whether a call changes anything in ProJict (a read-only API token can't make it).</summary>
+    public bool Changes(string name, JsonElement arguments) => name switch
+    {
+        "set_label" => false,
+        "draft_release" => new Args(arguments).Bool("save") == true,
+        _ => _tools.FirstOrDefault(t => t.Name == name) is not { ReadOnly: true },
+    };
+
+    /// <summary>The tool whose argument takes files, if any (paths locally, uploads over the API).</summary>
+    public string? FilesArgument(string tool) => _handlers.TryGetValue(tool, out var h) ? h.FilesArgument : null;
+
+    /// <summary>An attachment the session may download (it's on an item or note in a project it reaches), and its file.</summary>
+    public async Task<(Attachment Attachment, string Path)?> FindAttachmentAsync(McpSession session, Guid id) =>
+        await _dispatcher.InvokeAsync(() =>
+        {
+            _caller = session;
+            try
+            {
+                var attachment = LocalProjects
+                    .SelectMany(p => p.Walk().SelectMany(l => l.Item.Attachments ?? []).Concat(p.Notes.SelectMany(n => n.Attachments ?? [])))
+                    .FirstOrDefault(a => a.Id == id);
+                return attachment == null ? ((Attachment, string)?)null : (attachment, _state.Store.AttachmentPath(attachment));
+            }
+            finally { _caller = null; }
+        });
 
     // ───────────── Projects ─────────────
 
@@ -196,14 +250,31 @@ public sealed class AgentTools : IMcpToolHost
     private string CurrentProject(McpSession session, Args args, List<Attachment> files)
     {
         var folder = args.String("path") ?? session.WorkingDirectory;
-        var match = ProjectMatcher.ForFolder(LocalProjects, folder)
+        if (session.Remote && args.String("path") != null)
+            throw new McpToolException("Over the API, say which project with \"project\" (folders on the ProJict computer aren't looked up).");
+        var match = args.String("project") != null ? new FolderMatch(ResolveProject(session, args), "name")
+            : ProjectMatcher.ForFolder(LocalProjects, folder)
             ?? throw new McpToolException($"No project matches {folder ?? "your working directory"}. Projects: {ProjectNames()}. " +
-                                          "Pass \"project\" to the other tools, or ask the user to set the project's local repo folder in ProJict (Details tab).");
+                                          "Pass \"project\" to the other tools, or ask the user to set the project's local repo folder in ProJict (Details tab).",
+                ToolProblem.NotFound);
+        _main.Agents.WorkingIn(session, match.Project);
         var json = ProjectJson(match.Project);
         json["matchedBy"] = match.How;
         if (!string.IsNullOrWhiteSpace(match.Project.PromptPreamble)) json["instructions"] = match.Project.PromptPreamble.Trim();
         json["agentsMayWorkOn"] = (AgentAccess.Describe(AgentPriorities) ?? "no items at the moment (you can still read, comment and add items)") +
                                   "; never items on hold";
+        if (!string.IsNullOrWhiteSpace(match.Project.Description)) json["description"] = match.Project.Description.Trim();
+        if (!match.Project.IsInbox)
+        {
+            var shipping = ShipFlow.SettingsOf(match.Project);
+            json["shipping"] = new JsonObject
+            {
+                ["steps"] = new JsonArray(shipping.Steps.Select(s => (JsonNode)ShipFlow.Name(s)).ToArray()),
+                ["howTo"] = shipping.HowTo,
+                ["localStepsWithoutApproval"] = shipping.LocalWithoutApproval,
+                ["changedBy"] = shipping.ChangedBy,
+            };
+        }
         json["categories"] = new JsonArray(match.Project.Categories.Select(c => (JsonNode)new JsonObject
         {
             ["name"] = c.Name,
@@ -211,6 +282,69 @@ public sealed class AgentTools : IMcpToolHost
             ["done"] = c.Items.Count(i => i.IsDone),
         }).ToArray());
         return Json(json);
+    }
+
+    private const int MaxDetailLength = 20000;
+
+    private string UpdateProject(McpSession session, Args args, List<Attachment> files)
+    {
+        var project = ProjectFor(session, args);
+        var changed = new List<string>();
+        string? Text(string name, string label)
+        {
+            if (args.String(name) is not { } value) return null;
+            if (value.Length > MaxDetailLength) throw new McpToolException($"{label} can be up to {MaxDetailLength} characters.");
+            changed.Add(label);
+            return value.Trim();
+        }
+
+        var repoPath = Text("repo_path", "repo folder");
+        if (repoPath is { Length: > 0 })
+        {
+            if (!Path.IsPathFullyQualified(repoPath)) throw new McpToolException("Give the repo folder as a full path, e.g. C:\\Code\\Game.");
+            repoPath = Path.GetFullPath(repoPath);
+            if (!Directory.Exists(repoPath)) throw new McpToolException($"There's no folder {repoPath} on the ProJict computer.");
+        }
+        var gitHub = Text("github_url", "GitHub link");
+        if (gitHub is { Length: > 0 } && GitHubReleases.ParseRepo(gitHub) == null)
+            throw new McpToolException("The GitHub link should be a repository, like https://github.com/owner/name.");
+        var description = Text("description", "description");
+        var instructions = Text("instructions", "instructions");
+        List<ShipStep>? steps = null;
+        if (args.String("ship_steps") != null)
+        {
+            steps = args.Strings("ship_steps").Select(s => Enum.TryParse<ShipStep>(s.Trim(), true, out var step) ? step
+                : throw new McpToolException("ship_steps can be commit, build, package, push and release.")).ToList();
+            changed.Add("shipping steps");
+        }
+        var howTo = args.String("ship_how_to");
+        if (howTo != null)
+        {
+            if (howTo.Length > MaxDetailLength) throw new McpToolException($"how to ship can be up to {MaxDetailLength} characters.");
+            changed.Add("how to ship");
+        }
+        if (changed.Count == 0)
+            throw new McpToolException("Nothing to change: give repo_path, github_url, description, instructions, ship_steps or ship_how_to.");
+        var ships = steps != null || howTo != null;
+        if (ships)
+        {
+            try { ShipFlow.CheckAgentChange(project, steps); }
+            catch (InvalidOperationException ex) { throw new McpToolException(ex.Message, ToolProblem.Conflict); }
+        }
+
+        var agent = session.AgentName;
+        _main.GetProjectViewModel(project).AgentUpdateDetails(p =>
+        {
+            if (repoPath != null) p.RepoPath = repoPath.Length == 0 ? null : repoPath;
+            if (gitHub != null) p.GitHubUrl = gitHub.Length == 0 ? null : gitHub;
+            if (description != null) p.Description = description.Length == 0 ? null : description;
+            if (instructions != null) p.PromptPreamble = instructions.Length == 0 ? null : instructions;
+            if (ships) ShipFlow.AgentChange(p, steps, howTo, agent, DateTime.Now);
+        });
+        _state.StatusText = $"{agent} changed {project.Name}'s {string.Join(", ", changed)}.";
+        var result = new JsonObject { ["project"] = project.Name, ["changed"] = new JsonArray(changed.Select(c => (JsonNode)c).ToArray()) };
+        if (ships) result["note"] = "Until the user checks your shipping change in Details › Shipping, every ship request needs their approval.";
+        return Json(result);
     }
 
     private string SetLabel(McpSession session, Args args, List<Attachment> files)
@@ -244,7 +378,7 @@ public sealed class AgentTools : IMcpToolHost
         var tag = args.String("tag");
         var category = args.String("category");
         if (category != null && project.FindCategory(category) == null)
-            throw new McpToolException($"No category \"{category}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.");
+            throw new McpToolException($"No category \"{category}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.", ToolProblem.NotFound);
         var terms = (args.String("query") ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
         var limit = Math.Clamp(args.Int("limit") ?? 50, 1, 500);
         Func<TodoItem, bool> priorityOk = PriorityArgument(args) switch
@@ -299,7 +433,7 @@ public sealed class AgentTools : IMcpToolHost
     {
         var (project, loc) = FindItem(session, args.Required("id"));
         var item = loc.Item;
-        if (item.IsDone) throw new McpToolException("This item is already done. Use update_item with state todo to reopen it first.");
+        if (item.IsDone) throw new McpToolException("This item is already done. Use update_item with state todo to reopen it first.", ToolProblem.Conflict);
         CheckMayWork(project, item);
         var takenFrom = CheckOut(session, item, args);
         var agent = session.AgentName;
@@ -472,7 +606,8 @@ public sealed class AgentTools : IMcpToolHost
             ? $"{item.ClaimedBy} has this item checked out but isn't connected any more. Pass force=true to take it over, or leave it for the user to release."
             : holder.AgentName == session.AgentName
                 ? $"Another {session.AgentName} session has this item checked out. Call set_label so your sessions can be told apart, pick another item, or pass force=true to take it over."
-                : $"{item.ClaimedBy} has this item checked out and is still connected. Talk to it or the user with add_comment, pick another item, or pass force=true to take it over.");
+                : $"{item.ClaimedBy} has this item checked out and is still connected. Talk to it or the user with add_comment, pick another item, or pass force=true to take it over.",
+            ToolProblem.Conflict);
     }
 
     /// <summary>The priorities of items agents may work on (Settings › AI agents).</summary>
@@ -485,7 +620,7 @@ public sealed class AgentTools : IMcpToolHost
     private void CheckMayWork(Project project, TodoItem item)
     {
         if (AgentAccess.Refusal(AgentPriorities, AgentAccess.Governing(project).GetValueOrDefault(item)) is { } why)
-            throw new McpToolException(why + " You can still read it, and comment on it with add_comment (e.g. to ask the user).");
+            throw new McpToolException(why + " You can still read it, and comment on it with add_comment (e.g. to ask the user).", ToolProblem.Forbidden);
     }
 
     /// <summary>The session checked the item out, and nobody (another agent, the user) changed that since.</summary>
@@ -510,13 +645,15 @@ public sealed class AgentTools : IMcpToolHost
         {
             var project = ProjectFor(session, args);
             var category = project.FindCategory(name)
-                ?? throw new McpToolException($"No category \"{name}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.");
+                ?? throw new McpToolException($"No category \"{name}\" in {project.Name}. Categories: {string.Join(", ", project.Categories.Select(c => c.Name))}.", ToolProblem.NotFound);
             return new CommentTarget($"category {category.Name} ({project.Name})", project, category.Id, null, category.Comments);
         }
         if (args.String("group") is { } group)
         {
+            if (session.Projects != null)
+                throw new McpToolException("This API token reaches only some projects, so group discussions are outside it.", ToolProblem.Forbidden);
             var match = _state.Settings.Groups.FirstOrDefault(g => string.Equals(g, group.Trim(), StringComparison.OrdinalIgnoreCase))
-                ?? throw new McpToolException($"No group \"{group}\". Groups: {string.Join(", ", _state.Settings.Groups)}.");
+                ?? throw new McpToolException($"No group \"{group}\". Groups: {string.Join(", ", _state.Settings.Groups)}.", ToolProblem.NotFound);
             return new CommentTarget($"group {match}", null, null, match, _state.Settings.CommentsFor(match));
         }
         return null;
@@ -613,7 +750,8 @@ public sealed class AgentTools : IMcpToolHost
         if (candidates.Count != 1)
             throw new McpToolException(candidates.Count == 0
                 ? $"No note \"{title}\" in {project.Name}. Notes: {string.Join(", ", project.Notes.Select(n => n.Title))}."
-                : $"Several notes match \"{title}\": {string.Join(", ", candidates.Select(n => n.Title))}.");
+                : $"Several notes match \"{title}\": {string.Join(", ", candidates.Select(n => n.Title))}.",
+                candidates.Count == 0 ? ToolProblem.NotFound : ToolProblem.Invalid);
         var note = candidates[0];
         return Json(new JsonObject { ["title"] = note.Title, ["updatedBy"] = note.UpdatedBy, ["text"] = note.Text, ["attachments"] = Paths(note.Attachments) });
     }
@@ -758,12 +896,12 @@ public sealed class AgentTools : IMcpToolHost
     }
 
     private static ShipRequest OpenShip(Project project) =>
-        project.OpenShip ?? throw new McpToolException($"{project.Name} has no ship request: only the user can ask for one (the Ship button in ProJict).");
+        project.OpenShip ?? throw new McpToolException($"{project.Name} has no ship request: only the user can ask for one (the Ship button in ProJict).", ToolProblem.NotFound);
 
     private void ChangeShip(Project project, Action change)
     {
         try { _main.GetProjectViewModel(project).ChangeShip(change); }
-        catch (InvalidOperationException ex) { throw new McpToolException(ex.Message); }
+        catch (InvalidOperationException ex) { throw new McpToolException(ex.Message, ToolProblem.Conflict); }
     }
 
     // ───────────── Lookups ─────────────
@@ -784,10 +922,11 @@ public sealed class AgentTools : IMcpToolHost
             return LocalProjects.FirstOrDefault(p => p.Id.ToString().Equals(name, StringComparison.OrdinalIgnoreCase))
                    ?? LocalProjects.FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || p.Key.Equals(name, StringComparison.OrdinalIgnoreCase))
                    ?? LocalProjects.FirstOrDefault(p => GitHubReleases.MatchKey(p.Name) == GitHubReleases.MatchKey(name))
-                   ?? throw new McpToolException($"No project \"{name}\". Projects: {ProjectNames()}.");
+                   ?? throw new McpToolException($"No project \"{name}\". Projects: {ProjectNames()}.", ToolProblem.NotFound);
         }
         return ProjectMatcher.ForFolder(LocalProjects, session.WorkingDirectory)?.Project
-               ?? throw new McpToolException($"Say which project with \"project\" (no project matches your working directory). Projects: {ProjectNames()}.");
+               ?? throw new McpToolException(session.Remote ? $"Say which project with \"project\". Projects: {ProjectNames()}."
+                   : $"Say which project with \"project\" (no project matches your working directory). Projects: {ProjectNames()}.");
     }
 
     private (Project Project, ItemLocation Loc) FindItem(McpSession session, string id)
@@ -810,7 +949,7 @@ public sealed class AgentTools : IMcpToolHost
         return found.Count switch
         {
             1 => found[0],
-            0 => throw new McpToolException($"No item with id {id}. Use list_items to find it."),
+            0 => throw new McpToolException($"No item with id {id}. Use list_items to find it.", ToolProblem.NotFound),
             _ => throw new McpToolException($"Several items start with {id}; give more of the id."),
         };
     }
@@ -829,6 +968,9 @@ public sealed class AgentTools : IMcpToolHost
         if (missing.Count > 0) throw new McpToolException("File not found: " + string.Join(", ", missing));
         return await Task.Run(() => full.Select(_state.Store.ImportAttachment).ToList());
     }
+
+    private async Task<List<Attachment>> StoreUploadsAsync(List<(string Name, byte[] Content)> uploads) =>
+        await Task.Run(() => uploads.Select(u => _state.Store.WriteAttachment(u.Name, u.Content)).ToList());
 
     // ───────────── JSON ─────────────
 
@@ -937,7 +1079,9 @@ public sealed class AgentTools : IMcpToolHost
     }
 
     private JsonArray Paths(List<Attachment>? attachments) =>
-        new((attachments ?? []).Select(a => (JsonNode)_state.Store.AttachmentPath(a)).ToArray());
+        new((attachments ?? []).Select(a => _caller is { Remote: true } remote
+            ? new JsonObject { ["name"] = a.FileName, ["size"] = a.Size, ["url"] = $"{remote.BaseUrl}{ApiRoutes.Base}/attachments/{a.Id:N}" }
+            : (JsonNode)_state.Store.AttachmentPath(a)).ToArray());
 
     private string ProjectNames() => string.Join(", ", LocalProjects.Where(p => !p.IsInbox).Select(p => p.Name));
 
@@ -1033,5 +1177,22 @@ public sealed class AgentTools : IMcpToolHost
         public List<string> Strings(string name) => Get(name) is not { } v ? []
             : v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().Select(e => e.ToString()).Where(s => s.Trim().Length > 0).ToList()
             : [v.ToString()];
+
+        /// <summary>Files sent over the API: objects with a name and the content in base64.</summary>
+        public List<(string Name, byte[] Content)> Uploads(string name)
+        {
+            if (Get(name) is not { } v) return [];
+            var files = new List<(string, byte[])>();
+            foreach (var e in v.ValueKind == JsonValueKind.Array ? v.EnumerateArray().ToList() : [v])
+            {
+                if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("name", out var n) || n.ValueKind != JsonValueKind.String ||
+                    !e.TryGetProperty("data", out var d) || d.ValueKind != JsonValueKind.String)
+                    throw new McpToolException($"Over the API, send each file in \"{name}\" as an object with \"name\" and \"data\" (the content in base64); " +
+                                               "paths on the ProJict computer can't be used.");
+                try { files.Add((n.GetString()!, Convert.FromBase64String(d.GetString()!))); }
+                catch (FormatException) { throw new McpToolException($"The data of {n.GetString()} isn't valid base64."); }
+            }
+            return files;
+        }
     }
 }

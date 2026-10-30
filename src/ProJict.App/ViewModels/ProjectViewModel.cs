@@ -1099,6 +1099,16 @@ public sealed partial class ProjectViewModel : ObservableObject
         if (focus is { } id && caret is { } at && Project.Find(id) != null) FocusRequested?.Invoke(id, at);
     }
 
+    /// <summary>An AI agent changes the project's details, as one undo step (shipping settings stay out of undo, as ever).</summary>
+    public void AgentUpdateDetails(Action<Project> change)
+    {
+        Checkpoint();
+        change(Project);
+        Touch();
+        NotifyDetails();
+        _state.NotifyListChanged();
+    }
+
     public void AgentEdit(Guid itemId, Action<TodoItem> change)
     {
         var loc = Project.Find(itemId) ?? throw new InvalidOperationException("The item is no longer in this project.");
@@ -1416,7 +1426,8 @@ public sealed partial class ProjectViewModel : ObservableObject
         _shipSteps = null;
         foreach (var p in new[] { nameof(CanShip), nameof(Ship), nameof(HasShipCard), nameof(ShowShipRequest), nameof(ShipTitle), nameof(ShipStateText),
                      nameof(ShipStatusText), nameof(ShipPlan), nameof(HasShipPlan), nameof(ShipLog), nameof(ShipWaitsForYou), nameof(CanWithdrawShip),
-                     nameof(CanDismissShip), nameof(ShipSteps), nameof(ShipHowTo), nameof(ShipLocalWithoutApproval) })
+                     nameof(CanDismissShip), nameof(ShipSteps), nameof(ShipHowTo), nameof(ShipLocalWithoutApproval), nameof(HasShipChange),
+                     nameof(ShipChangeText) })
             OnPropertyChanged(p);
     }
 
@@ -1453,6 +1464,21 @@ public sealed partial class ProjectViewModel : ObservableObject
             ChangeShipSettings(s => s.LocalWithoutApproval = value);
             OnPropertyChanged();
         }
+    }
+
+    /// <summary>An AI agent changed the steps or how-to and you haven't checked it yet.</summary>
+    public bool HasShipChange => CanShip && Project.Shipping?.ChangedBy != null;
+
+    public string ShipChangeText => Project.Shipping is { ChangedBy: { } by } s
+        ? $"{by} changed the steps or how to ship{(s.ChangedAt is { } at ? at.ToString(" 'on' d MMM 'at' HH:mm", System.Globalization.CultureInfo.CurrentCulture) : "")}. " +
+          "Check it: until you do, every ship request waits for your approval."
+        : "";
+
+    [RelayCommand]
+    private void AcceptShipChange()
+    {
+        ChangeShipSettings(ShipFlow.AcceptChange);
+        RefreshShip();
     }
 
     private void ChangeShipSettings(Action<ShipSettings> change)
