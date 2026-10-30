@@ -69,7 +69,13 @@ public sealed partial class ProjectViewModel : ObservableObject
         new("In progress", ItemState.InProgress),
         new("Done", ItemState.Done),
         new("Needs review", ItemState.Done, ReviewOnly: true),
+        new("Needs you", null, AttentionOnly: true),
     ];
+
+    /// <summary>The state filter's "Needs you": items with an agent's work to review or comments you haven't read.</summary>
+    public static StateFilterOption WaitingFilter => StateFilters[^1];
+
+    public void ShowWaiting() => StateFilter = WaitingFilter;
     public static IReadOnlyList<PriorityFilterOption> PriorityFilters { get; } =
     [
         new("All priorities", null),
@@ -356,6 +362,7 @@ public sealed partial class ProjectViewModel : ObservableObject
     }
 
     public bool IsFilterActive => !string.IsNullOrWhiteSpace(FilterText) || (TagFilter ?? AllTags) != AllTags || StateFilter?.State != null ||
+                                  StateFilter?.AttentionOnly == true ||
                                   WorkedBy != null || PriorityFilter is { IsActive: true };
 
     public void Touch() => _state.MarkDirty(Project);
@@ -406,8 +413,10 @@ public sealed partial class ProjectViewModel : ObservableObject
         var tag = TagFilter ?? AllTags;
         var state = StateFilter?.State;
         var reviewOnly = StateFilter?.ReviewOnly == true;
+        var attentionOnly = StateFilter?.AttentionOnly == true;
 
-        bool StateOk(TodoItem item) => (state == null || item.State == state) && (!reviewOnly || item.NeedsReview);
+        bool StateOk(TodoItem item) => (state == null || item.State == state) && (!reviewOnly || item.NeedsReview) &&
+                                       (!attentionOnly || item.NeedsReview || HasUnread(item.Id, item.Comments));
 
         bool Matches(TodoItem item)
         {
@@ -438,7 +447,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             var visible = new HashSet<TodoItem>();
             foreach (var item in matches.SelectMany(m => m.Descendants().Where(StateOk).Prepend(m)))
                 for (TodoItem? p = item; p != null && visible.Add(p); p = parents.GetValueOrDefault(p)) { }
-            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && WorkedBy == null && PriorityFilter is not { IsActive: true } && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
+            var nameMatches = terms.Length > 0 && tag == AllTags && state == null && !attentionOnly && WorkedBy == null && PriorityFilter is not { IsActive: true } && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
             foreach (var row in category.AllRows) row.IsVisible = nameMatches || visible.Contains(row.Item);
             category.IsVisible = (nameMatches || visible.Count > 0) && !IsHiddenEmpty(category.Model);
             category.RaiseShowDone();
@@ -1849,7 +1858,7 @@ public sealed class ShipLogLine(ActivityEntry entry)
 /// <summary>What a change does, for what a guest's role allows: change existing things, add items, or comment.</summary>
 public enum EditKind { Edit, Add, Comment }
 
-public sealed record StateFilterOption(string Label, ItemState? State, bool ReviewOnly = false)
+public sealed record StateFilterOption(string Label, ItemState? State, bool ReviewOnly = false, bool AttentionOnly = false)
 {
     public override string ToString() => Label;
 }

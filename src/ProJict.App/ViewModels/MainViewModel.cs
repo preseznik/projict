@@ -25,6 +25,7 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     public bool HasWorkers => main.Agents.AgentsIn(Project.Id).Count > 0;
     /// <summary>A red dot: an unread comment or an agent's work to review somewhere in the project.</summary>
     public bool NeedsAttention => main.State.NeedsAttention(Project);
+    public string AttentionToolTip => main.State.AttentionSummary(Project);
     /// <summary>Who is there and what each did last (or the guests looking at it).</summary>
     public string WorkersToolTip => main.AgentActivity.ToolTipFor(Project) is { Length: > 0 } agents ? agents : WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
 

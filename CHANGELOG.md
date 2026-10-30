@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.17 (2026-10-30)
+
+- **What waits for you is easier to find.**
+  - Each item with an agent's work to review or comments you haven't read gets a red dot of its own, also inside the Done list. Pointing at it says which.
+  - The red dots on a folded Done list, a folded category and a project in the sidebar list what waits, e.g. "1 item to review, new comments in 2 discussions".
+- **Needs you** in the board's state filter shows only those items, done ones included. Clicking a folded category's red dot unfolds it and turns that filter on.
+
 ## 0.1.16 (2026-10-30)
 
 - **Agents** (in the sidebar, or right-click a project › Agents): what AI agents are doing right now and what they did before.

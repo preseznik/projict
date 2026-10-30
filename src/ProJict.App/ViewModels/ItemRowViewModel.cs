@@ -99,6 +99,25 @@ public sealed partial class ItemRowViewModel : ObservableObject
     public bool HasUnreadComments => Owner.HasUnread(Item.Id, Item.Comments);
     /// <summary>Waiting for you: an unread comment or work to review (folded sections show a red dot for it).</summary>
     public bool NeedsAttention => Item.NeedsReview || HasUnreadComments;
+
+    /// <summary>What waits on the item, for the red dot next to it.</summary>
+    public string AttentionToolTip => (Item.NeedsReview, HasUnreadComments) switch
+    {
+        (true, true) => "Waits for you: work to review (the review chip) and new comments",
+        (true, false) => "Waits for you: an AI agent finished it; check it, then click the review chip",
+        (false, true) => "Waits for you: new comments in its discussion",
+        _ => "",
+    };
+
+    public string GripToolTip => NeedsAttention ? AttentionToolTip + "\nDrag to move · Ctrl+click to select for a prompt" : "Drag to move · Ctrl+click to select for a prompt";
+
+    /// <summary>"To review" and/or "New comments", for the category's list of what waits.</summary>
+    public string AttentionKind => (Item.NeedsReview, HasUnreadComments) switch
+    {
+        (true, true) => "To review, new comments",
+        (true, false) => "To review",
+        _ => "New comments",
+    };
     /// <summary>The second line shows when there is something on it.</summary>
     public bool HasDetails => Item.Activity is { Count: > 0 } || CommentCount > 0;
 
@@ -149,6 +168,8 @@ public sealed partial class ItemRowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(HasUnreadComments));
         OnPropertyChanged(nameof(NeedsAttention));
+        OnPropertyChanged(nameof(AttentionToolTip));
+        OnPropertyChanged(nameof(GripToolTip));
     }
 
     public override string ToString() => Item.DisplayText();

@@ -100,6 +100,19 @@ public sealed partial class AppState : ObservableObject
         project.Categories.Any(c => HasUnread(ReadKey(c.Id), c.Comments)) ||
         project.OpenShip?.State == ShipState.Planned;
 
+    /// <summary>What waits for you in a project, for its red dot's tooltip; empty when nothing does.</summary>
+    public string AttentionSummary(Project project)
+    {
+        var review = project.Walk().Count(l => l.Item.NeedsReview);
+        var discussions = project.Walk().Count(l => HasUnread(ReadKey(l.Item.Id), l.Item.Comments)) +
+                          project.Categories.Count(c => HasUnread(ReadKey(c.Id), c.Comments));
+        var parts = new List<string>();
+        if (review > 0) parts.Add(review == 1 ? "1 item to review" : $"{review} items to review");
+        if (discussions > 0) parts.Add(discussions == 1 ? "new comments in 1 discussion" : $"new comments in {discussions} discussions");
+        if (project.OpenShip?.State == ShipState.Planned) parts.Add("a ship plan to approve");
+        return parts.Count == 0 ? "" : $"Waiting for you: {string.Join(", ", parts)}. On the board, All states › Needs you shows them.";
+    }
+
     /// <summary>Raised after any edit to a project (sidebar counts, dashboard).</summary>
     public event Action<Project>? ProjectChanged;
 

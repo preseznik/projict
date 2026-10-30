@@ -56,7 +56,7 @@ public sealed partial class CategoryViewModel : ObservableObject
             Model.Collapsed = !value;
             Owner.Touch();
             OnPropertyChanged();
-            OnPropertyChanged(nameof(ShowAttention));
+            RaiseAttention();
             Owner.OnCategoryExpandedChanged();
         }
     }
@@ -108,8 +108,7 @@ public sealed partial class CategoryViewModel : ObservableObject
         OnPropertyChanged(nameof(CommentCount));
         OnPropertyChanged(nameof(DiscussionToolTip));
         OnPropertyChanged(nameof(HasUnreadComments));
-        OnPropertyChanged(nameof(ShowAttention));
-        OnPropertyChanged(nameof(ShowDoneAttention));
+        RaiseAttention();
     }
 
     /// <summary>After you read a discussion somewhere: its red dots go.</summary>
@@ -117,8 +116,43 @@ public sealed partial class CategoryViewModel : ObservableObject
     {
         foreach (var row in AllRows) row.RefreshUnread();
         OnPropertyChanged(nameof(HasUnreadComments));
+        RaiseAttention();
+    }
+
+    private void RaiseAttention()
+    {
         OnPropertyChanged(nameof(ShowAttention));
         OnPropertyChanged(nameof(ShowDoneAttention));
+        OnPropertyChanged(nameof(AttentionToolTip));
+        OnPropertyChanged(nameof(DoneAttentionToolTip));
+    }
+
+    /// <summary>What waits in the folded category, and that a click shows just that.</summary>
+    public string AttentionToolTip => WaitingText(AllRows) + "\nClick to show only what waits for you.";
+    /// <summary>What waits in the folded Done list.</summary>
+    public string DoneAttentionToolTip => WaitingText(DoneRows);
+
+    private static string WaitingText(IEnumerable<ItemRowViewModel> rows)
+    {
+        const int listed = 5;
+        var waiting = rows.Where(r => r.NeedsAttention).ToList();
+        var lines = waiting.Take(listed).Select(r => $"{r.AttentionKind}: {Short(r.Item.DisplayText())}");
+        var more = waiting.Count > listed ? $"\n…and {waiting.Count - listed} more" : "";
+        return "Waiting for you:\n" + string.Join("\n", lines) + more;
+    }
+
+    private static string Short(string text)
+    {
+        var line = text.Replace("\r\n", "\n").Split('\n')[0].Trim();
+        return line.Length > 70 ? line[..70] + "…" : line;
+    }
+
+    /// <summary>The header's red dot: unfold and show only what waits for you.</summary>
+    [RelayCommand]
+    private void ShowWaiting()
+    {
+        IsExpanded = true;
+        Owner.ShowWaiting();
     }
 
     public bool HasUnreadComments => Owner.HasUnread(Model.Id, Model.Comments);
@@ -139,6 +173,7 @@ public sealed partial class CategoryViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(ShowDoneRows));
         OnPropertyChanged(nameof(ShowDoneAttention));
+        OnPropertyChanged(nameof(DoneAttentionToolTip));
     }
 
     private void AddRows(List<ItemRowViewModel> rows, TodoItem item, TodoItem? parent, int depth, bool done)
