@@ -17,6 +17,8 @@ public sealed record FeedEvent(DateTime At, FeedKind Kind, string Who, bool Agen
     public TodoItem? Item { get; init; }
     /// <summary>The item or category a comment was posted on.</summary>
     public Guid? DiscussionTargetId { get; init; }
+    /// <summary>The comment itself, to point it out in its discussion.</summary>
+    public Guid? CommentId { get; init; }
     public string? Group { get; init; }
     public NoteDoc? Note { get; init; }
     public Release? Release { get; init; }
@@ -67,13 +69,13 @@ public static class ActivityFeed
                     events.Add(ForItem(entry.At, FeedKind.History, entry.By, entry.Agent, action, detail));
                 }
                 foreach (var (comment, _) in item.Comments.Walk().Where(e => !e.Comment.Deleted))
-                    events.Add(ForItem(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", comment.Text) with { DiscussionTargetId = item.Id });
+                    events.Add(ForItem(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", comment.Text) with { DiscussionTargetId = item.Id, CommentId = comment.Id });
             }
 
             foreach (var category in project.Categories)
                 foreach (var (comment, _) in category.Comments.Walk().Where(e => !e.Comment.Deleted))
                     events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on", category.Name, comment.Text)
-                        { Project = project, Category = category, DiscussionTargetId = category.Id });
+                        { Project = project, Category = category, DiscussionTargetId = category.Id, CommentId = comment.Id });
 
             foreach (var release in project.Releases.Where(r => !r.IsBaseline))
                 events.Add(new FeedEvent(release.Date, FeedKind.Release, release.CreatedBy ?? userName, false,
@@ -94,7 +96,7 @@ public static class ActivityFeed
 
         foreach (var group in settings.Groups)
             foreach (var (comment, _) in settings.CommentsFor(group).Walk().Where(e => !e.Comment.Deleted))
-                events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on the group", group, comment.Text) { Group = group });
+                events.Add(new FeedEvent(comment.At, FeedKind.Comment, comment.By, comment.Agent, "commented on the group", group, comment.Text) { Group = group, CommentId = comment.Id });
 
         return events.OrderByDescending(e => e.At).ToList();
     }

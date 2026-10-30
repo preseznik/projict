@@ -27,6 +27,8 @@ public sealed class AppSettings
     public Dictionary<string, DateTime> DiscussionsRead { get; set; } = [];
     /// <summary>Comments from before this count as read: set the first time ProJict marked unread comments.</summary>
     public DateTime? UnreadSince { get; set; }
+    /// <summary>The Settings sections you left open, opened again next time.</summary>
+    public List<string>? OpenSettingsSections { get; set; }
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProJict", "settings.json");
@@ -89,6 +91,8 @@ public sealed class WorkspaceSettings
     public string? GitHubAccount { get; set; }
     public string Theme { get; set; } = "System";
     public bool SideBySide { get; set; }
+    /// <summary>The board leaves out categories with nothing left to do (Hide empty).</summary>
+    public bool HideEmptyCategories { get; set; }
     /// <summary>The board lists open items by priority (most pressing first) instead of in their own order.</summary>
     public bool SortByPriority { get; set; }
     public bool MarkCopiedInProgress { get; set; }

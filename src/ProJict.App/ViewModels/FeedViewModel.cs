@@ -155,7 +155,10 @@ public sealed partial class FeedViewModel : ObservableObject
         WhoFilter = Everyone;
     }
 
-    /// <summary>Goes to what the entry is about: the item (and its discussion for a comment), the release, the note or the project.</summary>
+    /// <summary>
+    /// Goes to what the entry is about: the item, the release, the note or the project. A comment opens its discussion
+    /// beside the Feed instead, pointing it out, so you keep your place in the Feed.
+    /// </summary>
     public void Open(FeedEvent e)
     {
         if (e.Kind == FeedKind.Api)
@@ -163,9 +166,10 @@ public sealed partial class FeedViewModel : ObservableObject
             _main.OpenApiCommand.Execute(null);
             return;
         }
-        if (e.Group != null)
+        if (e.Group != null || e is { DiscussionTargetId: not null, Project: not null })
         {
-            _main.OpenDiscussion(DiscussionTarget.ForGroup(e.Group));
+            _main.OpenDiscussion(e.Group != null ? DiscussionTarget.ForGroup(e.Group) : DiscussionTarget.InProject(e.Project!, e.DiscussionTargetId!.Value));
+            if (e.CommentId is { } comment) _main.Discussion?.Highlight(comment);
             return;
         }
         if (e.Project == null) return;

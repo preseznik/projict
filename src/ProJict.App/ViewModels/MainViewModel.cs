@@ -25,7 +25,11 @@ public sealed partial class ProjectListItemViewModel(Project project, MainViewMo
     public bool HasWorkers => main.Agents.AgentsIn(Project.Id).Count > 0;
     /// <summary>A red dot: an unread comment or an agent's work to review somewhere in the project.</summary>
     public bool NeedsAttention => main.State.NeedsAttention(Project);
-    public string WorkersToolTip => WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
+    /// <summary>Who is there and what each did last (or the guests looking at it).</summary>
+    public string WorkersToolTip => main.AgentActivity.ToolTipFor(Project) is { Length: > 0 } agents ? agents : WorkerBadge.ToolTipFor(main.Agents.AgentsIn(Project.Id));
+
+    /// <summary>An agent did something here: the badges' tooltip says so.</summary>
+    public void RefreshWorkers() => OnPropertyChanged(nameof(WorkersToolTip));
     /// <summary>A ship request in progress shows as a glyph next to the count (and the red dot while its plan waits for you).</summary>
     public bool HasShip => Project.OpenShip != null;
     public string? ShipToolTip => Project.OpenShip is { } s ? $"Ship request ({ShipFlow.Describe(s.Steps)}): {ShipFlow.StateName(s.State)}" : null;
@@ -97,6 +101,12 @@ public sealed partial class MainViewModel : ObservableObject
         };
         Dashboard = new DashboardViewModel(state, this);
         Feed = new FeedViewModel(state, this);
+        AgentActivity = new AgentActivityViewModel(state, this);
+        AgentTools.Recorded += (session, action) =>
+        {
+            if (CurrentView == AgentActivity) AgentActivity.OnRecorded(session);
+            if (action.ProjectId is { } id) ProjectItems.FirstOrDefault(i => i.Project.Id == id)?.RefreshWorkers();
+        };
         Api.Changed += () =>
         {
             if (CurrentView is FeedViewModel) Feed.Refresh();
@@ -105,6 +115,9 @@ public sealed partial class MainViewModel : ObservableObject
         {
             foreach (var item in ProjectItems) item.Refresh();
             if (CurrentView is DashboardViewModel) Dashboard.Refresh();
+            if (CurrentView == AgentActivity) AgentActivity.Refresh();
+            CurrentProject?.RefreshWorkingOnHint();
+            OnPropertyChanged(nameof(LiveAgentCount));
         };
         GitHub.Updated += () =>
         {
@@ -180,6 +193,10 @@ public sealed partial class MainViewModel : ObservableObject
     public Services.Api.ApiServer Api { get; }
     public DashboardViewModel Dashboard { get; }
     public FeedViewModel Feed { get; }
+    /// <summary>The Agents view: what connected agents are doing, and what they did.</summary>
+    public AgentActivityViewModel AgentActivity { get; }
+    /// <summary>Connected agents, for the count next to Agents in the sidebar.</summary>
+    public int LiveAgentCount => Agents.Sessions.Count;
     /// <summary>Which AI agents are connected and where they work.</summary>
     public Services.AgentPresence Agents { get; } = new();
     public ObservableCollection<ProjectListItemViewModel> ProjectItems { get; } = [];
@@ -196,6 +213,12 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private ProjectListItemViewModel? _selectedProjectItem;
     [ObservableProperty] private bool _isDashboardActive;
     [ObservableProperty] private bool _isFeedActive;
+    [ObservableProperty] private bool _isAgentsActive;
+
+    partial void OnCurrentViewChanged(object? oldValue, object? newValue)
+    {
+        if (oldValue == AgentActivity && newValue != AgentActivity) AgentActivity.Hide();
+    }
     [ObservableProperty] private bool _isInboxActive;
 
     public ProjectViewModel? CurrentProject => CurrentView as ProjectViewModel;
@@ -369,6 +392,7 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentView = vm;
         IsDashboardActive = false;
         IsFeedActive = false;
+        IsAgentsActive = false;
         IsInboxActive = project.IsInbox;
         _syncingSelection = true;
         SelectedProjectItem = ProjectItems.FirstOrDefault(i => i.Project == project);
@@ -384,6 +408,7 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentView = Dashboard;
         IsDashboardActive = true;
         IsFeedActive = false;
+        IsAgentsActive = false;
         IsInboxActive = false;
         _syncingSelection = true;
         SelectedProjectItem = null;
@@ -398,6 +423,7 @@ public sealed partial class MainViewModel : ObservableObject
         CurrentView = Feed;
         IsFeedActive = true;
         IsDashboardActive = false;
+        IsAgentsActive = false;
         IsInboxActive = false;
         _syncingSelection = true;
         SelectedProjectItem = null;
@@ -406,6 +432,27 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand] private void ShowInbox() => OpenProject(State.Inbox);
+
+    /// <summary>The Agents view, for one project (right-click a project › Agents) or all of them (the sidebar).</summary>
+    [RelayCommand]
+    public void ShowAgents(object? target)
+    {
+        var project = target switch
+        {
+            ProjectListItemViewModel item => item.Project,
+            Project p => p,
+            _ => null,
+        };
+        AgentActivity.Show(project);
+        CurrentView = AgentActivity;
+        IsAgentsActive = true;
+        IsDashboardActive = false;
+        IsFeedActive = false;
+        IsInboxActive = false;
+        _syncingSelection = true;
+        SelectedProjectItem = null;
+        _syncingSelection = false;
+    }
 
     [RelayCommand]
     private void NewProject()

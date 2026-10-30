@@ -54,6 +54,10 @@
                 <DataTrigger Binding="{Binding IsAgent}" Value="True">
                     <Setter TargetName="Glyph" Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                 </DataTrigger>
+                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                    <Setter TargetName="Body" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                    <Setter TargetName="Body" Property="Padding" Value="6,4" />
+                </DataTrigger>
                 <DataTrigger Binding="{Binding IsDeleted}" Value="True">
                     <Setter TargetName="Text" Property="FontStyle" Value="Italic" />
                     <Setter TargetName="Text" Property="Foreground" Value="{DynamicResource TextFillColorTertiaryBrush}" />
@@ -73,7 +77,13 @@
                         <Run Text="{Binding KindText, Mode=OneWay}" /><Run Text=" discussion" />
                     </TextBlock>
                     <TextBlock Text="{Binding Subject}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" MaxHeight="62" TextTrimming="WordEllipsis" Margin="0,2,0,0" />
-                    <TextBlock Text="{Binding Location}" Style="{StaticResource MutedText}" FontSize="11" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                    <DockPanel Margin="0,2,0,0">
+                        <TextBlock DockPanel.Dock="Right" FontSize="11" Margin="8,0,0,0" Visibility="{Binding CanShowInProject, Converter={StaticResource BoolToVis}}">
+                            <Hyperlink x:Name="ShowInProjectLink" Command="{Binding ShowInProjectCommand}" ToolTip="Open the project with this on its board"
+                                       TextDecorations="{x:Null}">Show in project</Hyperlink>
+                        </TextBlock>
+                        <TextBlock Text="{Binding Location}" Style="{StaticResource MutedText}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
                 </StackPanel>
             </DockPanel>
 

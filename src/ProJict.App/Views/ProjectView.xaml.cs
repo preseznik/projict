@@ -61,26 +61,36 @@ public partial class ProjectView : UserControl
 
     // ───────────── Narrow layout ─────────────
 
-    /// <summary>The toolbar's width with labels and the filter box at its narrowest, and the space around it in this view.</summary>
-    private double _fullToolbarWidth, _toolbarChrome, _offeredWidth;
+    /// <summary>
+    /// The toolbar's width with every label and the filter box at its narrowest, what the minor labels take of it, and
+    /// the space around the toolbar in this view.
+    /// </summary>
+    private double _fullToolbarWidth, _minorLabelsWidth, _toolbarChrome, _offeredWidth;
 
-    private TextBlock[] ToolbarLabels => [PriorityLabel, WorkingOnLabel, ShowDoneLabel, SideBySideLabel, ToggleAllLabel, CategoryLabel];
+    private TextBlock[] ToolbarLabels => [PriorityLabel, WorkingOnLabel, ShowDoneLabel, SideBySideLabel, ToggleAllLabel, HideEmptyLabel, CategoryLabel];
+    /// <summary>The labels that go first when the toolbar gets tight: their icons say enough.</summary>
+    private TextBlock[] MinorLabels => [SideBySideLabel, ToggleAllLabel, HideEmptyLabel];
 
     /// <summary>
     /// Fits the toolbar and header to the width this view is offered (less with the discussion panel open): the toolbar
-    /// buttons drop their labels (their tooltips still name them) and the header buttons wrap before reaching the title.
-    /// Decided here because the toolbar can't shrink below its content, so its own size never shows it is too narrow.
+    /// buttons drop their labels, the minor ones first (their tooltips still name them), and the header buttons wrap
+    /// before reaching the title. Decided here because the toolbar can't shrink below its content, so its own size never
+    /// shows it is too narrow.
     /// </summary>
     protected override Size MeasureOverride(Size constraint)
     {
         if (!double.IsInfinity(constraint.Width))
         {
             _offeredWidth = constraint.Width;
-            var compact = _fullToolbarWidth > 0 && constraint.Width < _fullToolbarWidth + _toolbarChrome;
+            var needed = _fullToolbarWidth + _toolbarChrome;
+            var tight = _fullToolbarWidth > 0 && constraint.Width < needed;
+            var compact = tight && constraint.Width < needed - _minorLabelsWidth;
             var labels = compact ? Visibility.Collapsed : Visibility.Visible;
-            foreach (var label in ToolbarLabels.Where(l => l.Visibility != labels))
+            foreach (var label in ToolbarLabels)
             {
-                label.Visibility = labels;
+                var visibility = tight && MinorLabels.Contains(label) ? Visibility.Collapsed : labels;
+                if (label.Visibility == visibility) continue;
+                label.Visibility = visibility;
                 // Re-measured up to the toolbar: a button whose margin changes below in this same pass otherwise keeps
                 // its content's old size (Show done stayed as wide as with its label).
                 for (DependencyObject? d = label; d != null && d != Toolbar; d = VisualTreeHelper.GetParent(d))
@@ -89,7 +99,8 @@ public partial class ProjectView : UserControl
             // Compact also narrows the filters and gaps a little, so the buttons on the right fit next to the discussion panel.
             TagFilterBox.Width = StateFilterBox.Width = compact ? 90 : 130;
             TagFilterBox.Margin = StateFilterBox.Margin = PriorityButton.Margin = new Thickness(compact ? 4 : 8, 0, 0, 0);
-            Toolbar.ColumnDefinitions[0].MinWidth = compact ? 100 : 140;
+            Toolbar.ColumnDefinitions[0].MinWidth = compact ? 70 : 140;
+            FilterHint.Text = compact ? "Filter" : "Filter (Ctrl+F)";
             PriorityChevron.Visibility = labels;
             ShowDoneToggle.Margin = new Thickness(compact ? 4 : 12, 0, 0, 0);
             ToolbarRight.Margin = new Thickness(compact ? 4 : 12, 0, 0, 0);
@@ -101,8 +112,9 @@ public partial class ProjectView : UserControl
 
     private void Toolbar_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (ShowDoneLabel.Visibility != Visibility.Visible) return;
+        if (ToolbarLabels.Any(l => l.Visibility != Visibility.Visible)) return;
         _fullToolbarWidth = Toolbar.ColumnDefinitions[0].MinWidth + ToolbarMiddle.DesiredSize.Width + ToolbarRight.DesiredSize.Width;
+        _minorLabelsWidth = MinorLabels.Sum(l => l.ActualWidth + l.Margin.Left);
         _toolbarChrome = 2 * Toolbar.TranslatePoint(default, this).X;
         if (_offeredWidth > 0 && _offeredWidth < _fullToolbarWidth + _toolbarChrome) InvalidateMeasure();
     }

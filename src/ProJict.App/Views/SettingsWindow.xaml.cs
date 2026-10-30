@@ -1,17 +1,26 @@
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using ProJict.App.Services;
 using ProJict.App.ViewModels;
+using ProJict.Core.Agents;
 using ProJict.Core.Export;
 using ProJict.Core.Model;
 
 namespace ProJict.App.Views;
 
+/// <summary>
+/// Settings, in folding sections: each shows a summary of what's set while folded, the ones you left open open again
+/// next time, and "Find a setting" shows just the sections that mention what you type.
+/// </summary>
 public partial class SettingsWindow : Window
 {
     private readonly AppState _state;
+    /// <summary>The sections open before a search, put back when it's cleared.</summary>
+    private HashSet<Expander>? _openBeforeFind;
 
     public SettingsWindow(AppState state)
     {
@@ -41,12 +50,137 @@ public partial class SettingsWindow : Window
         VersionText.Text = $"ProJict {UpdateService.CurrentVersionText}";
         UpdatePanel.DataContext = App.Current.MainVm.Updates;
         ApiStatus.Text = ApiViewModel.StatusOf(App.Current.MainVm.Api);
+
+        foreach (var section in AllSections)
+            section.IsExpanded = state.AppSettings.OpenSettingsSections?.Contains((string)section.Tag) == true;
+        if (App.Current.MainVm.Updates.IsAvailable) UpdatesSection.IsExpanded = true;
+        // The summaries follow what you tick, type and choose.
+        AddHandler(ToggleButton.CheckedEvent, new RoutedEventHandler((_, _) => RefreshSummaries()));
+        AddHandler(ToggleButton.UncheckedEvent, new RoutedEventHandler((_, _) => RefreshSummaries()));
+        AddHandler(TextBoxBase.TextChangedEvent, new TextChangedEventHandler((_, _) => RefreshSummaries()));
+        AddHandler(Selector.SelectionChangedEvent, new SelectionChangedEventHandler((_, _) => RefreshSummaries()));
+        RefreshSummaries();
+        PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control && !Hotkey.IsKeyboardFocused)
+            {
+                Find.Focus();
+                e.Handled = true;
+            }
+        };
+        // Opening a section grows the window: keep its bottom (Save, Cancel) on the screen.
+        SizeChanged += (_, _) =>
+        {
+            var area = SystemParameters.WorkArea;
+            if (Top + ActualHeight > area.Bottom) Top = Math.Max(area.Top, area.Bottom - ActualHeight);
+        };
+        Closed += (_, _) => RememberSections();
+    }
+
+    // ───────────── Sections ─────────────
+
+    public IEnumerable<Expander> AllSections => Sections.Children.OfType<Expander>();
+
+    private void RefreshSummaries()
+    {
+        if (UpdatesSummary == null) return; // still loading
+        var priorities = AgentPriorities.Children.OfType<CheckBox>().Where(b => b.IsChecked == true).Select(b => Enum.Parse<Priority>((string)b.Tag)).ToList();
+        AgentsSummary.Text = AllowAgents.IsChecked != true ? "Off: agents can't connect"
+            : "On · they may work on " + (AgentAccess.Describe(priorities) ?? "no items (they can still read and comment)");
+        ApiSummary.Text = ApiStatus.Text;
+        BoardSummary.Text = $"{(Theme.SelectedItem as ComboBoxItem)?.Content} theme · stale after {StaleDays.Text.Trim()} days" +
+                            (MarkInProgress.IsChecked == true ? " · copying a prompt marks items in progress" : "");
+        CommentsSummary.Text = "You sign as " + (string.IsNullOrWhiteSpace(UserName.Text) ? Environment.UserName : UserName.Text.Trim());
+        CaptureSummary.Text = (string.IsNullOrEmpty(Hotkey.Text) ? "No hotkey" : "Hotkey " + Hotkey.Text) + " · " +
+                              (CloseToTray.IsChecked == true ? "closing keeps it in the tray" : "closing quits");
+        GitHubSummary.Text = string.IsNullOrWhiteSpace(GitHubAccount.Text) ? "No account"
+            : GitHubAccount.Text.Trim() + (UseGitHubCli.IsChecked == true ? " · with your gh sign-in" : "");
+        DataSummary.Text = DataRoot.Text.Trim();
+        MirrorSummary.Text = MirrorEnabled.IsChecked == true ? "On · " + MirrorFolder.Text.Trim() : "Off";
+        var updates = App.Current.MainVm.Updates;
+        UpdatesSummary.Text = (updates.Available is { } available ? $"ProJict {available.Version.ToString(3)} is available"
+            : CheckUpdates.IsChecked == true ? "Checks automatically" : "Checks only when you ask") + $" · this is {UpdateService.CurrentVersionText}";
+    }
+
+    private void Find_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var terms = Find.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        FindHint.Visibility = Find.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (terms.Length == 0)
+        {
+            foreach (var section in AllSections)
+            {
+                section.Visibility = Visibility.Visible;
+                if (_openBeforeFind != null) section.IsExpanded = _openBeforeFind.Contains(section);
+            }
+            _openBeforeFind = null;
+            NothingFound.Visibility = Visibility.Collapsed;
+            return;
+        }
+        _openBeforeFind ??= AllSections.Where(s => s.IsExpanded).ToHashSet();
+        var found = 0;
+        foreach (var section in AllSections)
+        {
+            var text = SearchText(section);
+            var match = terms.All(t => text.Contains(t, StringComparison.CurrentCultureIgnoreCase));
+            section.Visibility = match ? Visibility.Visible : Visibility.Collapsed;
+            section.IsExpanded = match;
+            if (match) found++;
+        }
+        NothingFound.Text = $"No setting mentions “{Find.Text.Trim()}”.";
+        NothingFound.Visibility = found == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void Find_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || Find.Text.Length == 0) return;
+        Find.Text = "";
+        e.Handled = true; // Esc clears the search first, then closes the window
+    }
+
+    /// <summary>Everything a section says: titles, labels, check boxes, choices, notes and tooltips.</summary>
+    private static string SearchText(Expander section)
+    {
+        var text = new StringBuilder();
+        void Collect(object node)
+        {
+            switch (node)
+            {
+                case string s:
+                    text.Append(s).Append(' ');
+                    return;
+                case TextBlock t:
+                    text.Append(t.Text).Append(' ');
+                    break;
+            }
+            if (node is FrameworkElement { ToolTip: string tip }) text.Append(tip).Append(' ');
+            if (node is DependencyObject d)
+                foreach (var child in LogicalTreeHelper.GetChildren(d)) Collect(child);
+        }
+        Collect(section);
+        return text.ToString();
+    }
+
+    /// <summary>Shows a problem in the section it's about.</summary>
+    private void ShowError(string message, Expander section)
+    {
+        Error.Text = message;
+        Find.Text = "";
+        section.IsExpanded = true;
+        section.BringIntoView();
+    }
+
+    private void RememberSections()
+    {
+        _state.AppSettings.OpenSettingsSections = (_openBeforeFind ?? AllSections.Where(s => s.IsExpanded)).Select(s => (string)s.Tag).ToList();
+        _state.SaveAppSettings();
     }
 
     private void OpenApi_Click(object sender, RoutedEventArgs e)
     {
         new ApiWindow(App.Current.MainVm) { Owner = this }.ShowDialog();
         ApiStatus.Text = ApiViewModel.StatusOf(App.Current.MainVm.Api);
+        RefreshSummaries();
     }
 
     /// <summary>How to add ProJict to one AI agent: what to run or paste, and where.</summary>
@@ -191,13 +325,13 @@ public partial class SettingsWindow : Window
     {
         if (!int.TryParse(StaleDays.Text, out var stale) || stale < 0)
         {
-            Error.Text = "Stale days must be a whole number (0 turns it off).";
+            ShowError("Stale days must be a whole number (0 turns it off).", BoardSection);
             return;
         }
         var mirrorOn = MirrorEnabled.IsChecked == true;
         if (mirrorOn && string.IsNullOrWhiteSpace(MirrorFolder.Text))
         {
-            Error.Text = "Choose a folder for the mirror.";
+            ShowError("Choose a folder for the mirror.", MirrorSection);
             return;
         }
 
@@ -229,7 +363,7 @@ public partial class SettingsWindow : Window
         {
             if (!App.Current.RegisterHotkey(Hotkey.Text, out var error))
             {
-                Error.Text = error;
+                ShowError(error ?? "That hotkey couldn't be registered.", CaptureSection);
                 App.Current.RegisterHotkey(s.Hotkey, out _);
                 return;
             }

@@ -38,7 +38,7 @@ Right-click an item, or click the **⋯** that appears on its right when you poi
 
 Start an item with `BUG:`, `ADD:`, `ISSUE:` or `CHANGE:` to tag it. Right-click an item's checkbox to mark it as to do, in progress or done. Drag items by their handle to reorder them or move them to another category.
 
-Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done. **Working on** shows only the items someone is on: checked out by an AI agent or marked in progress.
+Next to the filter box, **All tags** shows only items with one tag and **All states** shows only items that are to do, in progress or done. **Working on** shows only the items someone is on: checked out by an AI agent or marked in progress. **Hide empty** hides the categories with nothing left to do (only done items, or none) until you click **Show all**.
 
 Give an item a priority (urgent, high, medium or low) from its right-click menu or with Alt+1 to Alt+4. **On hold** (Alt+5) parks an item: it sorts last, and AI agents leave it alone. The **Priority** button above the board sorts open items by priority and can show only items of some priority (e.g. high and up, or on hold). Sorting only changes what you see: your own order stays and is what exports use. While the board is sorted, items can't be dragged or moved.
 
@@ -74,7 +74,11 @@ Other MCP clients run the same program with `--mcp`. If ProJict isn't running, i
 - **Check-out:** while an agent has an item checked out (its name shows on the item), other agents can't change it, only comment on it. Taking it over is possible but is written to the item's history. If an agent stops halfway, right-click the item › **Release check-out**. You can always edit any item yourself.
 - **Signed work:** every change, comment, note and release records who made it: you (the name in **Settings → Comments & history**) or the agent. Under each item, a chip names everyone who worked on it; hover it for what they did, click it to show only their items.
 - **Review:** an item an agent completes gets a **review** chip. Check the work, then click the chip to accept it, or mark the item to do to send it back. The dashboard lists everything waiting for review and what agents did recently, and **All states → Needs review** filters the board.
-- **Who's working where:** while an agent is connected, a badge with its initials shows next to each project it works in, in the sidebar and on the dashboard.
+- **Who's working where:** while an agent is connected, a badge with its initials shows next to each project it works in, in the sidebar and on the dashboard. Hover the badge for what it did last.
+- **Agents** (in the sidebar, or right-click a project › **Agents**):
+  - Each connected agent gets a card: where it works, what it's busy with (the dots move while it's active), what it has checked out, and its latest actions.
+  - Agents can say what they're doing with set_status, for example "Running the tests".
+  - Older agent work is listed below, greyed out.
 - **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
 - Turn agent access off under **Settings → AI agents**. Only programs running under your Windows account can connect; nothing is opened to the network.
 
@@ -134,7 +138,7 @@ Items, categories and groups each have a discussion with threaded replies, for y
 - **Releases on GitHub**: enter your GitHub account under **Settings → GitHub** (tick the GitHub CLI option to include private repositories). ProJict links projects to repositories with the same name, shows each one's latest release on its dashboard card, and the dashboard's **Released** filter lists them. A project's own GitHub link (Details) always wins.
 - **Reusing a project's layout**: right-click a project and choose **Copy categories from** to add another project's categories (without its items).
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
-- **Feed**: everything that happened across your projects, newest first: items added and finished, what AI agents did, comments, releases and notes. Filter by project, kind, person or agent and period, or search. Click an entry to go to it.
+- **Feed**: everything that happened across your projects, newest first: items added and finished, what AI agents did, comments, releases and notes. Filter by project, kind, person or agent and period, or search. Click an entry to go to it; a comment opens its discussion beside the Feed.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.
 - **Attachments**: drag files onto an item, paste a screenshot or copied files with Ctrl+V while editing it, or right-click it › **Attach files…**. To start a new item with a screenshot, paste it into the **Add item** box. Images show as thumbnails under the item. Click a picture to open it in ProJict's viewer, where you can mark it up (pen, highlighter, arrows, boxes, circles) and **Save copy** next to the original. Other files open in their usual app. Right-click an attachment to show it in its folder, copy its path or remove it.
 - **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link, your own standing instructions (set in **Details**) and the paths of attached files.

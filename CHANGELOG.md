@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.16 (2026-10-30)
+
+- **Agents** (in the sidebar, or right-click a project › Agents): what AI agents are doing right now and what they did before.
+  - Each connected agent gets a card: where it works, what it's busy with (dots move while it's active), the items it has checked out, and its latest actions.
+  - Older agent work is listed below, greyed out; a click goes where it happened.
+  - Agents can tell you what they're busy with ("Running the tests") using the new set_status tool.
+  - Hovering an agent's badge in the sidebar shows what it did last.
+- When **Working on** finds nothing, the board says why, for example that an agent is connected but hasn't checked out an item, with a link to Agents.
+- **Hide empty** on the board's toolbar hides every category with nothing left to do (only done items, or none); the button then reads **Show all**. It's remembered for all projects.
+- **Settings** opens as folding sections, each showing a summary of what's set.
+  - **Find a setting** (Ctrl+F) shows only the sections that mention what you type.
+  - The sections you left open open again next time.
+  - A problem when saving opens its section.
+- Clicking a comment in the **Feed** opens its discussion beside the Feed, with that comment highlighted, instead of switching to the project. **Show in project** in the discussion's header goes there.
+- The board's toolbar fits narrower windows better: Side by side, Collapse all and Hide empty drop their labels first, and Clear selection shows only while items are selected.
+
 ## 0.1.15 (2026-10-30)
 
 - **API** (Settings › API): another way for AI agents, scripts and tools such as n8n to work in ProJict. It offers a REST API, described in OpenAPI at `/api/v1/openapi.json`, and the same tools as the MCP over HTTP at `/mcp`, so MCP clients on another computer or web-based connectors can use ProJict too. Off until you turn it on.

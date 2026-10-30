@@ -399,7 +399,7 @@
                         </Grid.ColumnDefinitions>
                         <Grid>
                             <TextBox x:Name="FilterBox" Text="{Binding FilterText, UpdateSourceTrigger=PropertyChanged}" PreviewKeyDown="FilterBox_PreviewKeyDown" />
-                            <TextBlock Text="Filter (Ctrl+F)" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                            <TextBlock x:Name="FilterHint" Text="Filter (Ctrl+F)" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextFillColorTertiaryBrush}"
                                        Visibility="{Binding FilterText, Converter={StaticResource InvEmptyToVis}}" />
                         </Grid>
@@ -438,9 +438,14 @@
                             <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="{Binding ToggleAllText}" Command="{Binding ToggleAllCategoriesCommand}" Margin="4,0,0,0" ToolTip="Fold or unfold every category">
                                 <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="{Binding ToggleAllGlyph}" /><TextBlock x:Name="ToggleAllLabel" Text="{Binding ToggleAllText}" Margin="6,0,0,0" /></StackPanel>
                             </Button>
+                            <ToggleButton x:Name="HideEmptyToggle" Style="{StaticResource SubtleToggle}" AutomationProperties.Name="{Binding HideEmptyText}" IsChecked="{Binding HideEmpty}"
+                                          Margin="4,0,0,0" ToolTip="{Binding HideEmptyToolTip}">
+                                <StackPanel Orientation="Horizontal"><TextBlock Style="{StaticResource Icon}" Text="{Binding HideEmptyGlyph}" /><TextBlock x:Name="HideEmptyLabel" Text="{Binding HideEmptyText}" Margin="6,0,0,0" /></StackPanel>
+                            </ToggleButton>
                         </StackPanel>
                         <StackPanel x:Name="ToolbarRight" Grid.Column="3" Orientation="Horizontal" Margin="12,0,0,0">
-                            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8E6;" AutomationProperties.Name="Clear selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear prompt selection" />
+                            <Button Style="{StaticResource SubtleIconButton}" Content="&#xE8E6;" AutomationProperties.Name="Clear selection" Command="{Binding ClearSelectionCommand}" ToolTip="Clear prompt selection"
+                                    Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" />
                             <Button Style="{StaticResource SubtleIconButton}" Content="&#xE7A7;" AutomationProperties.Name="Undo" Command="{Binding UndoCommand}" ToolTip="Undo (Ctrl+Z)" />
                             <Button Style="{StaticResource SubtleIconButton}" Content="&#xE7A6;" AutomationProperties.Name="Redo" Command="{Binding RedoCommand}" ToolTip="Redo (Ctrl+Y)" />
                             <Button Style="{StaticResource SubtleButton}" AutomationProperties.Name="Add category" Command="{Binding AddCategoryCommand}" ToolTip="New category">
@@ -450,6 +455,17 @@
                     </Grid>
 
                     <DockPanel Grid.Row="1">
+                    <!-- "Working on" found nothing: why, and where to see what agents are doing. -->
+                    <Border x:Name="WorkingOnHint" DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="4,0,8,8"
+                            Visibility="{Binding ShowWorkingOnHint, Converter={StaticResource BoolToVis}}">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xE768;" Margin="0,2,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock TextWrapping="Wrap">
+                                <Run Text="{Binding WorkingOnHintText, Mode=OneWay}" />
+                                <Hyperlink Command="{Binding ShowAgentsCommand}" TextDecorations="{x:Null}">See what agents are doing</Hyperlink>
+                            </TextBlock>
+                        </DockPanel>
+                    </Border>
                     <!-- A ship request: choosing its steps, then the agent's plan, your decision and what the agent reports. -->
                     <Border x:Name="ShipCard" DockPanel.Dock="Top" Style="{StaticResource Card}" Padding="14,10" Margin="4,0,8,8"
                             Visibility="{Binding HasShipCard, Converter={StaticResource BoolToVis}}">

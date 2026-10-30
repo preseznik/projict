@@ -32,6 +32,9 @@ public sealed class AgentTools : IMcpToolHost
     /// <summary>The session whose call is running: calls run one at a time on the UI thread.</summary>
     private McpSession? _caller;
 
+    /// <summary>Raised on the UI thread after an agent did something (it's in the session's <see cref="McpSession.Recent"/>).</summary>
+    public event Action<McpSession, AgentAction>? Recorded;
+
     public AgentTools(AppState state, MainViewModel main, Dispatcher dispatcher)
     {
         _state = state;
@@ -60,6 +63,10 @@ public sealed class AgentTools : IMcpToolHost
         Add("set_label", "Set your label",
             "Adds a short label to the name you sign with (e.g. the task or folder), so the user can tell parallel sessions apart: \"Claude Code · login fix\".",
             Schema(("label", "string", "A few words; empty removes the label.", true)), SetLabel);
+        Add("set_status", "Set your status",
+            "Tells the user in a few words what you're doing right now, e.g. \"Running the tests\" or \"Writing the fix for the launcher\". " +
+            "It shows live next to your name in ProJict's Agents view. Call it when you start a longer step; empty clears it.",
+            Schema(("status", "string", "A few words (up to 120 characters); empty clears it.", true)), SetStatus);
         Add("list_items", "List items",
             "Items of a project, flattened (sub-items name their parent). Filter by state, tag, category or text. " +
             "Items the user keeps off limits to agents (by priority, or on hold) are left out unless include_off_limits is true.",
@@ -170,6 +177,7 @@ public sealed class AgentTools : IMcpToolHost
         "change or complete them. Ask the user questions or report progress with add_comment, and check list_comments for their " +
         "answers. File problems you notice with add_item, and put documentation or reports for people in a note with write_doc. " +
         "Keep a project's details (repo folder, GitHub link, description, instructions, how it's shipped) up to date with update_project. " +
+        "When you start a longer step (running tests, a build, a bigger change), tell the user with set_status; it shows live in ProJict. " +
         "Items with a gitHubIssue stand for that GitHub issue: mention \"Fixes #<number>\" in the commit or pull request that resolves one. " +
         "When a project shows a shipRequest, the user wants it committed, built, packaged, pushed or released: read it with ship_request, post your " +
         "plan with plan_ship and wait for their approval in ProJict; only then run the steps, report each with report_ship and end with finish_ship " +
@@ -206,7 +214,12 @@ public sealed class AgentTools : IMcpToolHost
         var (text, error) = await _dispatcher.InvokeAsync(() =>
         {
             _caller = session;
-            try { return ((string?)run(session, args, files), (Exception?)null); }
+            try
+            {
+                var result = run(session, args, files);
+                Record(session, name, args);
+                return ((string?)result, (Exception?)null);
+            }
             catch (Exception ex) { return (null, ex); }
             finally { _caller = null; }
         });
@@ -217,7 +230,7 @@ public sealed class AgentTools : IMcpToolHost
     /// <summary>Whether a call changes anything in ProJict (a read-only API token can't make it).</summary>
     public bool Changes(string name, JsonElement arguments) => name switch
     {
-        "set_label" => false,
+        "set_label" or "set_status" => false,
         "draft_release" => new Args(arguments).Bool("save") == true,
         _ => _tools.FirstOrDefault(t => t.Name == name) is not { ReadOnly: true },
     };
@@ -239,6 +252,66 @@ public sealed class AgentTools : IMcpToolHost
             }
             finally { _caller = null; }
         });
+
+    // ───────────── What agents do ─────────────
+
+    /// <summary>Notes what the agent just did, in a few words, for the Agents view.</summary>
+    private void Record(McpSession session, string tool, Args args)
+    {
+        (Project Project, ItemLocation Loc)? found = null;
+        if ((args.String("id") ?? args.String("item")) is { } id)
+        {
+            try { found = FindItemIn(id); }
+            catch (McpToolException) { }
+        }
+        var project = found?.Project;
+        if (project == null)
+        {
+            try { project = ResolveProject(session, args); }
+            catch (McpToolException) { }
+        }
+        var item = found?.Loc.Item;
+        var what = item != null ? $"“{Short(item.Text)}”" : "an item";
+        var text = tool switch
+        {
+            "list_projects" => "Looked through the projects",
+            "current_project" => project != null ? $"Opened {project.Name}" : "Looked for its project",
+            "update_project" => $"Changed the details of {project?.Name}",
+            "set_label" => $"Now signs as {session.AgentName}",
+            "set_status" => session.Status ?? "Cleared its status",
+            "list_items" => project != null ? $"Went through the items of {project.Name}" : "Went through the items",
+            "get_item" => $"Read {what}",
+            "claim_item" => $"Checked out {what}",
+            "complete_item" => $"Finished {what}",
+            "add_item" => $"Added “{Short(args.String("text") ?? "")}”",
+            "update_item" => args.String("state") == "todo" ? $"Put back {what}" : $"Changed {what}",
+            "attach_file" => $"Attached files to {what}",
+            "list_comments" => item != null ? $"Read the discussion of {what}" : "Read the latest comments",
+            "add_comment" => item != null ? $"Commented on {what}" : $"Commented on {args.String("category") ?? args.String("group") ?? "a discussion"}",
+            "read_docs" => args.String("title") is { } title ? $"Read the note “{title}”" : "Looked at the notes",
+            "write_doc" => $"Wrote the note “{args.String("title")}”",
+            "draft_release" => args.Bool("save") == true ? "Recorded a release" : "Drafted release notes",
+            "ship_request" => "Read the ship request",
+            "plan_ship" => "Posted a plan for shipping",
+            "report_ship" => $"Reported the {args.String("step")} step: {args.String("outcome")}",
+            "finish_ship" => args.String("outcome") == "shipped" ? "Shipped it" : "Couldn't ship it",
+            _ => tool.Replace('_', ' '),
+        };
+        var action = new AgentAction(DateTime.Now, text, project?.Id, item?.Id);
+        session.LastActive = action.At;
+        session.Recent.Add(action);
+        if (session.Recent.Count > McpSession.KeptActions) session.Recent.RemoveRange(0, session.Recent.Count - McpSession.KeptActions);
+        Recorded?.Invoke(session, action);
+    }
+
+    private string SetStatus(McpSession session, Args args, List<Attachment> files)
+    {
+        var status = args.String("status")?.Trim();
+        if (status is { Length: > 120 }) throw new McpToolException("Keep the status short (120 characters at most).");
+        session.Status = string.IsNullOrEmpty(status) ? null : status;
+        session.StatusAt = session.Status == null ? null : DateTime.Now;
+        return Json(new JsonObject { ["status"] = session.Status });
+    }
 
     // ───────────── Projects ─────────────
 

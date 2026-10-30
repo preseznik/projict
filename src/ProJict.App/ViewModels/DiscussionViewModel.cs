@@ -92,6 +92,7 @@ public sealed partial class DiscussionViewModel : ObservableObject
         Count = comments.CountComments();
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(CanWrite));
+        OnPropertyChanged(nameof(CanShowInProject));
         _state.MarkRead(Target.Kind == DiscussionKind.Group ? AppState.ReadKey(Target.Group!) : AppState.ReadKey(Target.TargetId), comments);
     }
 
@@ -104,6 +105,31 @@ public sealed partial class DiscussionViewModel : ObservableObject
     }
 
     [RelayCommand] private void Close() => _main.CloseDiscussion();
+
+    /// <summary>An item's or category's discussion can take you to it on its project's board.</summary>
+    public bool CanShowInProject => Target.Kind != DiscussionKind.Group && !IsGone && Project != null;
+
+    [RelayCommand]
+    private void ShowInProject()
+    {
+        if (!CanShowInProject) return;
+        var board = _main.OpenProject(Project!);
+        if (Project!.Find(Target.TargetId) is { } loc) board.Reveal(loc.Item);
+    }
+
+    /// <summary>Points out one comment (e.g. the one clicked in the Feed); the panel scrolls to it.</summary>
+    public void Highlight(Guid commentId)
+    {
+        void Mark(IEnumerable<CommentViewModel> comments)
+        {
+            foreach (var comment in comments)
+            {
+                comment.IsHighlighted = comment.Id == commentId;
+                Mark(comment.Replies);
+            }
+        }
+        Mark(Threads);
+    }
 
     /// <summary>Posts your comment as a new thread or a reply; false (with the reason in the status bar) when it couldn't.</summary>
     public bool Post(string text, Guid? replyTo)
@@ -183,6 +209,8 @@ public sealed partial class CommentViewModel : ObservableObject
     public string WhenToolTip => Model.At.ToString("dddd d MMMM yyyy, HH:mm", CultureInfo.CurrentCulture);
 
     [ObservableProperty] private bool _isReplying;
+    /// <summary>The comment you came for (from the Feed).</summary>
+    [ObservableProperty] private bool _isHighlighted;
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendReplyCommand))]
     private string _replyText = "";

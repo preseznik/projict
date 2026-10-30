@@ -15,6 +15,9 @@
         <DataTemplate DataType="{x:Type vm:FeedViewModel}">
             <views:FeedView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AgentActivityViewModel}">
+            <views:AgentActivityView />
+        </DataTemplate>
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Gesture="Ctrl+K" Command="{Binding SearchCommand}" />
@@ -73,6 +76,19 @@
                             <TextBlock Style="{StaticResource Icon}" Text="&#xE81C;" Width="26" HorizontalAlignment="Left" TextAlignment="Left" />
                             <TextBlock Text="Feed" />
                         </StackPanel>
+                    </Button>
+                    <Button Style="{StaticResource NavButton}" Command="{Binding ShowAgentsCommand}" Tag="{Binding IsAgentsActive}"
+                            ToolTip="What AI agents are doing right now, and what they did">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="26" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE99A;" HorizontalAlignment="Left" />
+                            <TextBlock Grid.Column="1" Text="Agents" />
+                            <TextBlock Grid.Column="2" Text="{Binding LiveAgentCount}" Style="{StaticResource MutedText}" ToolTip="Connected now" />
+                        </Grid>
                     </Button>
                     <Button Style="{StaticResource NavButton}" Command="{Binding ShowInboxCommand}" Tag="{Binding IsInboxActive}">
                         <Grid>
@@ -220,6 +236,8 @@
                                     <Grid.ContextMenu>
                                         <ContextMenu Opened="ProjectMenu_Opened">
                                             <MenuItem Header="Rename…" Command="{Binding PlacementTarget.Tag.RenameProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />
+                                            <MenuItem Header="Agents" Command="{Binding PlacementTarget.Tag.ShowAgentsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"
+                                                      ToolTip="What AI agents are doing in this project, and what they did" />
                                             <MenuItem Header="Ship…" Command="{Binding PlacementTarget.Tag.ShipProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}"
                                                       ToolTip="Ask an AI agent to commit, build, package, push or release it; you approve its plan first" />
                                             <MenuItem Header="Hide" Command="{Binding PlacementTarget.Tag.HideProjectCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" CommandParameter="{Binding}" />

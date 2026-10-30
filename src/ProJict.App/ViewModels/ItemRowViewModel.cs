@@ -134,6 +134,8 @@ public sealed partial class ItemRowViewModel : ObservableObject
     public bool HasGitHubLinks => Item.Issue != null;
 
     [ObservableProperty] private bool _isSelected;
+
+    partial void OnIsSelectedChanged(bool value) => Owner.OnSelectionChanged();
     [ObservableProperty] private bool _isVisible = true;
     [ObservableProperty] private bool _isDropTarget;
 

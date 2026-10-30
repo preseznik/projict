@@ -33,6 +33,16 @@ public sealed class McpSession
     /// <summary>Where the API answers ("http://127.0.0.1:47614"), for links to attachments; set per request.</summary>
     public string? BaseUrl { get; set; }
 
+    public DateTime ConnectedAt { get; } = DateTime.Now;
+    /// <summary>When it last called a tool.</summary>
+    public DateTime? LastActive { get; set; }
+    /// <summary>What the agent says it's doing (set_status), and since when.</summary>
+    public string? Status { get; set; }
+    public DateTime? StatusAt { get; set; }
+    /// <summary>What it did lately, oldest first (at most <see cref="KeptActions"/>), for the Agents view.</summary>
+    public List<AgentAction> Recent { get; } = [];
+    public const int KeptActions = 40;
+
     /// <summary>How the agent signs its work: "Claude Code" for a client named "claude-code", plus its label if it set one.</summary>
     public string AgentName => string.IsNullOrWhiteSpace(Label) ? ClientDisplayName : $"{ClientDisplayName} · {Label.Trim()}";
 
@@ -43,6 +53,9 @@ public sealed class McpSession
     private static string Prettify(string name) => name.Contains(' ') ? name.Trim() :
         string.Join(" ", name.Split(['-', '_'], StringSplitOptions.RemoveEmptyEntries).Select(w => char.ToUpperInvariant(w[0]) + w[1..]));
 }
+
+/// <summary>One thing an agent did, in a few words ("Checked out “Fix the launcher”"), and the project and item it was about.</summary>
+public sealed record AgentAction(DateTime At, string Text, Guid? ProjectId, Guid? ItemId);
 
 public interface IMcpToolHost
 {

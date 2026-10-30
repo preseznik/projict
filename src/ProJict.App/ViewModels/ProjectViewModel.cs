@@ -37,6 +37,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         Main = main;
         Project = project;
         _sideBySide = state.Settings.SideBySide;
+        _hideEmpty = state.Settings.HideEmptyCategories;
         _sortByPriority = state.Settings.SortByPriority;
         RebuildAll();
         ReloadSideLists();
@@ -232,6 +233,28 @@ public sealed partial class ProjectViewModel : ObservableObject
         }
     }
 
+    /// <summary>"Working on" found nothing: the board says why, e.g. that a connected agent hasn't checked anything out.</summary>
+    public bool ShowWorkingOnHint => ShowWorkingOn && !Categories.Any(c => c.IsVisible);
+
+    public string WorkingOnHintText
+    {
+        get
+        {
+            var agents = Main.Agents.AgentsIn(Project.Id);
+            if (agents.Count == 0) return "Nothing is in progress: no item is checked out by an AI agent or marked in progress.";
+            var names = agents.Count == 1 ? agents[0] : string.Join(", ", agents.Take(agents.Count - 1)) + " and " + agents[^1];
+            return $"Nothing is in progress. {names} {(agents.Count == 1 ? "is" : "are")} connected to {Project.Name} but {(agents.Count == 1 ? "hasn't" : "haven't")} checked out an item.";
+        }
+    }
+
+    public void RefreshWorkingOnHint()
+    {
+        OnPropertyChanged(nameof(ShowWorkingOnHint));
+        OnPropertyChanged(nameof(WorkingOnHintText));
+    }
+
+    [RelayCommand] private void ShowAgents() => Main.ShowAgents(Project);
+
     partial void OnShowDoneChanged(bool value)
     {
         foreach (var c in Categories) c.IsDoneExpanded = value;
@@ -243,6 +266,40 @@ public sealed partial class ProjectViewModel : ObservableObject
         _state.MarkSettingsDirty();
         foreach (var c in Categories) c.RaiseShowDone();
     }
+
+    /// <summary>
+    /// Hide empty: the board leaves out categories with nothing left to do (only done items, or none), for every project.
+    /// A category you add meanwhile stays until you toggle it again, so it doesn't vanish before you fill it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HideEmptyText), nameof(HideEmptyGlyph))]
+    private bool _hideEmpty;
+
+    private readonly HashSet<Category> _keepShown = [];
+
+    public string HideEmptyText => HideEmpty ? "Show all" : "Hide empty";
+    public string HideEmptyGlyph => HideEmpty ? "\uE890" : "\uED1A";
+
+    public string HideEmptyToolTip
+    {
+        get
+        {
+            if (!HideEmpty) return "Hide the categories with nothing left to do (only done items, or none)";
+            var hidden = Categories.Count(c => IsHiddenEmpty(c.Model));
+            return hidden == 0 ? "Every category has something to do; show all again" : $"{hidden} {(hidden == 1 ? "category is" : "categories are")} hidden: show all again";
+        }
+    }
+
+    partial void OnHideEmptyChanged(bool value)
+    {
+        _state.Settings.HideEmptyCategories = value;
+        _state.MarkSettingsDirty();
+        _keepShown.Clear();
+        ApplyFilter();
+    }
+
+    private bool IsHiddenEmpty(Category category) =>
+        HideEmpty && !_keepShown.Contains(category) && !category.Walk().Any(l => !l.Item.IsDone);
 
     // ───────────── Priority ─────────────
 
@@ -339,6 +396,7 @@ public sealed partial class ProjectViewModel : ObservableObject
         OnPropertyChanged(nameof(TagFilters));
         ApplyFilter();
         OnCategoryExpandedChanged();
+        OnSelectionChanged();
     }
 
     public void ApplyFilter()
@@ -364,7 +422,7 @@ public sealed partial class ProjectViewModel : ObservableObject
             if (!active)
             {
                 foreach (var row in category.AllRows) row.IsVisible = true;
-                category.IsVisible = true;
+                category.IsVisible = !IsHiddenEmpty(category.Model);
                 category.RaiseShowDone();
                 continue;
             }
@@ -382,10 +440,12 @@ public sealed partial class ProjectViewModel : ObservableObject
                 for (TodoItem? p = item; p != null && visible.Add(p); p = parents.GetValueOrDefault(p)) { }
             var nameMatches = terms.Length > 0 && tag == AllTags && state == null && WorkedBy == null && PriorityFilter is not { IsActive: true } && terms.All(t => category.Name.Contains(t, StringComparison.OrdinalIgnoreCase));
             foreach (var row in category.AllRows) row.IsVisible = nameMatches || visible.Contains(row.Item);
-            category.IsVisible = nameMatches || visible.Count > 0;
+            category.IsVisible = (nameMatches || visible.Count > 0) && !IsHiddenEmpty(category.Model);
             category.RaiseShowDone();
         }
         OnPropertyChanged(nameof(IsFilterActive));
+        OnPropertyChanged(nameof(HideEmptyToolTip));
+        RefreshWorkingOnHint();
     }
 
     public List<ItemRowViewModel> VisibleRows()
@@ -780,9 +840,14 @@ public sealed partial class ProjectViewModel : ObservableObject
     private void AddCategory()
     {
         var name = InputDialog.Ask(Application.Current.MainWindow!, "New category", "Category name (ALL CAPS matches your TXT files):", "");
-        if (string.IsNullOrWhiteSpace(name)) return;
+        if (!string.IsNullOrWhiteSpace(name)) AddNamedCategory(name);
+    }
+
+    private void AddNamedCategory(string name)
+    {
         Checkpoint();
         var category = new Category { Name = name.Trim() };
+        if (HideEmpty) _keepShown.Add(category);
         Project.Categories.Add(category);
         Touch();
         RebuildAll();
@@ -880,6 +945,11 @@ public sealed partial class ProjectViewModel : ObservableObject
     {
         foreach (var row in AllRows) row.IsSelected = false;
     }
+
+    /// <summary>Items are selected for a prompt (Ctrl+click): the toolbar then offers to clear the selection.</summary>
+    public bool HasSelection => AllRows.Any(r => r.IsSelected);
+
+    public void OnSelectionChanged() => OnPropertyChanged(nameof(HasSelection));
 
     // ───────────── Attachments ─────────────
 

@@ -53,6 +53,12 @@ public sealed class AgentPresence
         if (_people.Remove(key)) Changed?.Invoke();
     }
 
+    /// <summary>The connected agents (local ones and API callers), in the order they connected.</summary>
+    public IReadOnlyList<McpSession> Sessions => [.. _projects.Keys];
+
+    /// <summary>The projects an agent works in: the one for its folder and any it read or changed.</summary>
+    public IReadOnlyCollection<Guid> ProjectsOf(McpSession session) => _projects.TryGetValue(session, out var ids) ? ids : [];
+
     /// <summary>The agents working in a project and the guests looking at it, one per name, in the order they connected.</summary>
     public IReadOnlyList<string> AgentsIn(Guid projectId) =>
         _projects.Where(kv => kv.Value.Contains(projectId)).Select(kv => kv.Key.AgentName)

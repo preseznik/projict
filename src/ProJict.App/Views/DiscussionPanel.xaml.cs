@@ -12,6 +12,24 @@ public partial class DiscussionPanel : UserControl
     public DiscussionPanel()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) => Dispatcher.BeginInvoke(ScrollToHighlighted, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Scrolls to the comment the panel was opened for, if any.</summary>
+    private void ScrollToHighlighted()
+    {
+        var body = Descendants(ThreadScroll).OfType<Border>().FirstOrDefault(b => b.Name == "Body" && b.DataContext is CommentViewModel { IsHighlighted: true });
+        body?.BringIntoView();
+    }
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    {
+        for (var i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            yield return child;
+            foreach (var d in Descendants(child)) yield return d;
+        }
     }
 
     private void NewThread_PreviewKeyDown(object sender, KeyEventArgs e)
