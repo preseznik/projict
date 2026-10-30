@@ -170,7 +170,7 @@ public sealed partial class CategoryViewModel : ObservableObject
         0 => "Discuss this category",
         1 => "Discussion: 1 comment",
         var n => $"Discussion: {n} comments",
-    };
+    } + (Model.Walk().Sum(l => l.Item.Comments.CountComments()) is > 0 and var onItems ? $" · {onItems} on its items, shown there too" : "");
 
     public void RaiseShowDone()
     {

@@ -150,7 +150,42 @@
                 <TextBlock Text="No comments yet. Start a thread below; AI agents working on this project can read it and answer." Style="{StaticResource MutedText}"
                            TextWrapping="Wrap" VerticalAlignment="Top" Margin="0,8,0,0" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}" />
                 <ScrollViewer x:Name="ThreadScroll" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Threads}" Focusable="False" Margin="0,0,4,8" />
+                    <StackPanel Margin="0,0,4,8">
+                        <ItemsControl ItemsSource="{Binding Threads}" Focusable="False" />
+                        <!-- A category's: what was said on its items, under each item's name. -->
+                        <TextBlock Text="On its items" Style="{StaticResource SectionTitle}" Margin="0,18,0,0"
+                                   Visibility="{Binding HasItemDiscussions, Converter={StaticResource BoolToVis}}" />
+                        <ItemsControl x:Name="ItemDiscussions" ItemsSource="{Binding ItemDiscussions}" Focusable="False">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ItemDiscussion}">
+                                    <StackPanel Margin="0,6,0,4">
+                                        <Border x:Name="ItemHeader" Padding="4,3" CornerRadius="4" Background="Transparent" Cursor="Hand" ToolTip="Show it on the board">
+                                            <Border.InputBindings>
+                                                <MouseBinding MouseAction="LeftClick" Command="{Binding OpenCommand}" />
+                                            </Border.InputBindings>
+                                            <DockPanel>
+                                                <TextBlock x:Name="ItemGlyph" DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xE8BD;" FontSize="11" Margin="0,3,8,0"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                <TextBlock x:Name="ItemText" Text="{Binding Text}" FontWeight="SemiBold" TextWrapping="Wrap" MaxHeight="40" TextTrimming="WordEllipsis" />
+                                            </DockPanel>
+                                        </Border>
+                                        <Border Margin="9,0,0,0" Padding="12,0,0,0" BorderThickness="2,0,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}">
+                                            <ItemsControl ItemsSource="{Binding Discussion.Threads}" Focusable="False" />
+                                        </Border>
+                                    </StackPanel>
+                                    <DataTemplate.Triggers>
+                                        <Trigger SourceName="ItemHeader" Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ItemHeader" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                        </Trigger>
+                                        <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                            <Setter TargetName="ItemGlyph" Property="Text" Value="&#xE73E;" />
+                                            <Setter TargetName="ItemText" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </ScrollViewer>
             </Grid>
         </DockPanel>

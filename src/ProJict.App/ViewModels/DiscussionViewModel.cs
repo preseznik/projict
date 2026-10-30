@@ -56,7 +56,39 @@ public sealed partial class DiscussionViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(PostCommand))]
     private string _newText = "";
 
-    public bool IsEmpty => Threads.Count == 0 && !IsGone;
+    public bool IsEmpty => Threads.Count == 0 && ItemDiscussions.Count == 0 && !IsGone;
+
+    /// <summary>
+    /// A category's discussion also shows what was said on its items: each item's discussion as a sub-thread under the
+    /// item's name, the most recently active first. Replies there go to the item.
+    /// </summary>
+    public ObservableCollection<ItemDiscussion> ItemDiscussions { get; } = [];
+    public bool HasItemDiscussions => ItemDiscussions.Count > 0;
+
+    private void SyncItemDiscussions()
+    {
+        var project = Project;
+        var category = Target.Kind == DiscussionKind.Category ? project?.Categories.FirstOrDefault(c => c.Id == Target.TargetId) : null;
+        var items = category == null ? [] : category.Walk()
+            .Select(l => l.Item)
+            .Where(i => i.Comments.Walk().Any())
+            .OrderByDescending(i => i.Comments.Walk().Max(e => e.Comment.At))
+            .ToList();
+        for (var i = ItemDiscussions.Count - 1; i >= 0; i--)
+            if (items.All(item => item.Id != ItemDiscussions[i].ItemId)) ItemDiscussions.RemoveAt(i);
+        for (var i = 0; i < items.Count; i++)
+        {
+            var existing = ItemDiscussions.FirstOrDefault(d => d.ItemId == items[i].Id);
+            if (existing == null) ItemDiscussions.Insert(i, new ItemDiscussion(_main, _state, project!, items[i]));
+            else
+            {
+                existing.Refresh(items[i]);
+                var at = ItemDiscussions.IndexOf(existing);
+                if (at != i) ItemDiscussions.Move(at, i);
+            }
+        }
+        OnPropertyChanged(nameof(HasItemDiscussions));
+    }
 
     /// <summary>False in another ProJict's project where your role doesn't include discussions.</summary>
     public bool CanWrite => !IsGone && (Project?.Remote is not { } remote || (remote.Connected && ProJict.Core.Sharing.GuestAccess.CanComment(remote.Role)));
@@ -93,6 +125,7 @@ public sealed partial class DiscussionViewModel : ObservableObject
         var comments = Comments();
         CommentViewModel.SyncList(Threads, comments, this, 0);
         Count = comments.CountComments();
+        SyncItemDiscussions();
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(CanWrite));
         OnPropertyChanged(nameof(CanShowInProject));
@@ -399,4 +432,41 @@ public sealed partial class PendingFile(string name, long size, string? path, by
     public string SizeText => AttachmentViewModel.FormatSize(size);
 
     [RelayCommand] private void Remove() => list?.Remove(this);
+}
+
+/// <summary>An item's discussion shown inside its category's: the item's name (a click shows it on the board) and its threads.</summary>
+public sealed partial class ItemDiscussion : ObservableObject
+{
+    private readonly MainViewModel _main;
+    private readonly Project _project;
+
+    public ItemDiscussion(MainViewModel main, AppState state, Project project, TodoItem item)
+    {
+        _main = main;
+        _project = project;
+        ItemId = item.Id;
+        // A discussion of its own, so replies, files and deleting work as in the item's panel.
+        Discussion = new DiscussionViewModel(main, state, DiscussionTarget.InProject(project, item.Id));
+        Refresh(item);
+    }
+
+    public Guid ItemId { get; }
+    public DiscussionViewModel Discussion { get; }
+    public string Text { get; private set; } = "";
+    public bool IsDone { get; private set; }
+
+    public void Refresh(TodoItem item)
+    {
+        Text = item.DisplayText().Replace("\r\n", " ").Replace('\n', ' ');
+        IsDone = item.IsDone;
+        Discussion.Sync();
+        OnPropertyChanged(nameof(Text));
+        OnPropertyChanged(nameof(IsDone));
+    }
+
+    [RelayCommand]
+    private void Open()
+    {
+        if (_project.Find(ItemId) is { } loc) _main.OpenProject(_project).Reveal(loc.Item);
+    }
 }

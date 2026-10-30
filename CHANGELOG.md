@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.19 (2026-10-30)
+
+- A category's discussion also shows what was said on its items: each item's comments as a sub-thread under the item's name, the most recently active first, done items included. Replies there go to the item, and the item's name shows it on the board.
+
 ## 0.1.18 (2026-10-30)
 
 - **Windows notifications** for what needs you (Settings › Notifications).
