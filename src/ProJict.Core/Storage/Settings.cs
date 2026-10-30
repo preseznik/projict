@@ -64,6 +64,10 @@ public sealed class AppSettings
     public List<string>? OpenSettingsSections { get; set; }
     /// <summary>Windows notifications for what needs you (Settings › Notifications).</summary>
     public NotificationSettings Notifications { get; set; } = new();
+    /// <summary>How the Feed groups what happened: by day, week or month.</summary>
+    public ProJict.Core.Features.ActivityGrouping FeedGrouping { get; set; }
+    /// <summary>How the Agents view groups its earlier agent work.</summary>
+    public ProJict.Core.Features.ActivityGrouping AgentsGrouping { get; set; }
 
     public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ProJict", "settings.json");

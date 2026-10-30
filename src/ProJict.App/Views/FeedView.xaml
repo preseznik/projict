@@ -6,7 +6,7 @@
         <!-- One entry: time, what kind of thing happened, who did what, to which item, and where. A click leads there. -->
         <DataTemplate x:Key="FeedRow" DataType="{x:Type vm:FeedRowViewModel}">
             <StackPanel>
-                <TextBlock Text="{Binding DayHeader}" Style="{StaticResource SectionTitle}" Margin="8,16,0,4"
+                <TextBlock Text="{Binding DayHeader}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="8,10,0,2"
                            Visibility="{Binding DayHeader, Converter={StaticResource EmptyToVis}}" />
                 <Border x:Name="EntryRoot" Padding="8,7" CornerRadius="6" Background="Transparent" Cursor="Hand">
                     <Border.InputBindings>
@@ -47,6 +47,17 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <!-- A day, week or month: its heading, its stats when opened, and its entries unless folded. -->
+        <DataTemplate x:Key="FeedGroup" DataType="{x:Type vm:ActivityGroupViewModel}">
+            <StackPanel>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActivityGroupHeader}" Focusable="False" />
+                <ContentControl Content="{Binding Stats}" ContentTemplate="{StaticResource ActivityStatsPanel}" Focusable="False"
+                                Visibility="{Binding IsStatsOpen, Converter={StaticResource BoolToVis}}" />
+                <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource FeedRow}" Focusable="False"
+                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid Margin="28,20,20,12">
@@ -74,19 +85,30 @@
             <ComboBox ItemsSource="{Binding WhoChoices}" SelectedItem="{Binding WhoFilter}" Width="160" Margin="0,0,8,6"
                       AutomationProperties.Name="Who" ToolTip="Only people, only AI agents, or one of them" />
             <ComboBox ItemsSource="{x:Static vm:FeedViewModel.Periods}" SelectedItem="{Binding Period}" DisplayMemberPath="Label" Width="140" Margin="0,0,8,6"
-                      AutomationProperties.Name="Period" />
+                      AutomationProperties.Name="Period" ToolTip="How far back; grouped by week or month, the weeks or months it reaches show whole" />
+            <ComboBox ItemsSource="{x:Static vm:GroupingOption.All}" SelectedItem="{Binding Grouping}" DisplayMemberPath="Label" Width="130" Margin="0,0,8,6"
+                      AutomationProperties.Name="Group by" ToolTip="Group what happened by day, week or month; each has its own stats" />
+            <Button Style="{StaticResource SubtleButton}" Content="{Binding FoldAllText}" Command="{Binding FoldAllCommand}" Margin="0,0,8,6"
+                    ToolTip="Fold or open every period" Visibility="{Binding Groups, Converter={StaticResource EmptyToVis}}" />
             <Button Style="{StaticResource SubtleButton}" Content="Clear filters" Command="{Binding ClearFiltersCommand}" Margin="0,0,0,6"
                     Visibility="{Binding IsFiltered, Converter={StaticResource BoolToVis}}" />
         </WrapPanel>
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
-            <StackPanel MaxWidth="980" HorizontalAlignment="Left">
-                <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource FeedRow}" Focusable="False" />
+            <!-- As wide as the window allows, up to 980: the stats and their charts get the room. -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MaxWidth="980" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+            <StackPanel>
+                <ItemsControl x:Name="GroupList" ItemsSource="{Binding Groups}" ItemTemplate="{StaticResource FeedGroup}" Focusable="False" />
                 <TextBlock Text="{Binding EmptyText}" Style="{StaticResource MutedText}" FontSize="13" TextWrapping="Wrap" Margin="8,12,0,0"
-                           Visibility="{Binding Rows, Converter={StaticResource InvEmptyToVis}}" />
+                           Visibility="{Binding Groups, Converter={StaticResource InvEmptyToVis}}" />
                 <Button Content="Show more" HorizontalAlignment="Left" Margin="8,12,0,12" Command="{Binding ShowMoreCommand}"
                         Visibility="{Binding HasMore, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </UserControl>

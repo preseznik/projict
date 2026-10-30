@@ -11,34 +11,46 @@ namespace ProJict.App.ViewModels;
 
 /// <summary>
 /// The Agents view: the AI agents connected right now, each with what it's doing (live), what it has checked out and
-/// what it did lately; below them, older agent work from the projects' history, greyed out. Optionally for one project.
+/// what it did lately; below them, older agent work from the projects' history, greyed out and grouped by day, week or
+/// month, each period with its stats. Optionally for one project.
 /// </summary>
 public sealed partial class AgentActivityViewModel : ObservableObject
 {
     public const string AllProjects = "All projects";
     /// <summary>An agent counts as busy this long after its last call, or after setting its status.</summary>
     public static readonly TimeSpan BusyFor = TimeSpan.FromSeconds(30);
-    private const int HistoryShown = 60;
+    private const int HistoryShown = 100;
 
     private readonly AppState _state;
     private readonly MainViewModel _main;
     private readonly DispatcherTimer _clock;
+    private readonly ActivityTimeline _timeline;
+    private List<FeedEvent> _historyEvents = [];
+    private int _historyLimit = HistoryShown;
 
     public AgentActivityViewModel(AppState state, MainViewModel main)
     {
         _state = state;
         _main = main;
+        _timeline = new ActivityTimeline(agentsOnly: true, BuildHistory);
+        _grouping = GroupingOption.For(state.AppSettings.AgentsGrouping);
         // Ages ("12 s ago") and busy/idle move on by themselves; only while the view shows.
         _clock = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
         _clock.Tick += (_, _) => Tick();
     }
 
     [ObservableProperty] private string _projectFilter = AllProjects;
+    [ObservableProperty] private GroupingOption _grouping;
     public List<string> ProjectChoices { get; private set; } = [AllProjects];
     public List<AgentCardViewModel> Live { get; private set; } = [];
+    /// <summary>Earlier agent work by period, newest first.</summary>
+    public List<ActivityGroupViewModel> HistoryGroups { get; private set; } = [];
+    /// <summary>Every earlier entry built, in order (folded periods have none).</summary>
     public List<AgentHistoryRow> History { get; private set; } = [];
     public bool HasLive => Live.Count > 0;
-    public bool HasHistory => History.Count > 0;
+    public bool HasHistory => HistoryGroups.Count > 0;
+    public bool HasMoreHistory { get; private set; }
+    public string FoldAllText => ActivityTimeline.FoldAllText(HistoryGroups);
 
     public string Subtitle => ProjectFilter == AllProjects ? "What AI agents are doing in your projects" : $"What AI agents are doing in {ProjectFilter}";
 
@@ -48,7 +60,19 @@ public sealed partial class AgentActivityViewModel : ObservableObject
             : $"No AI agent is working in {ProjectFilter} right now."
         : "AI agents can't connect: they're turned off in Settings › AI agents.";
 
-    partial void OnProjectFilterChanged(string value) => Refresh();
+    partial void OnProjectFilterChanged(string value)
+    {
+        _historyLimit = HistoryShown;
+        Refresh();
+    }
+
+    partial void OnGroupingChanged(GroupingOption value)
+    {
+        _state.AppSettings.AgentsGrouping = value.Grouping;
+        _state.SaveAppSettings();
+        _historyLimit = HistoryShown;
+        BuildHistory();
+    }
 
     /// <summary>Shows the view, for one project or all of them.</summary>
     public void Show(Project? project)
@@ -72,13 +96,31 @@ public sealed partial class AgentActivityViewModel : ObservableObject
             .Where(s => project == null || _main.Agents.ProjectsOf(s).Contains(project.Id))
             .Select(s => new AgentCardViewModel(s, this, project))
             .ToList();
-        History = ActivityFeed.Build(_state.Projects.Where(p => p.Remote == null && (project == null || p == project)), _state.Settings, _state.UserName)
-            .Where(e => e.Agent)
-            .Take(HistoryShown)
-            .Select(e => new AgentHistoryRow(e, _main))
-            .ToList();
-        foreach (var name in new[] { nameof(Live), nameof(History), nameof(HasLive), nameof(HasHistory), nameof(Subtitle), nameof(EmptyText) })
+        _historyEvents = [.. ActivityFeed.Build(_state.Projects.Where(p => p.Remote == null && (project == null || p == project)), _state.Settings, _state.UserName)
+            .Where(e => e.Agent)];
+        foreach (var name in new[] { nameof(Live), nameof(HasLive), nameof(Subtitle), nameof(EmptyText) })
             OnPropertyChanged(name);
+        BuildHistory();
+    }
+
+    private void BuildHistory()
+    {
+        HistoryGroups = _timeline.Build(_historyEvents, Grouping.Grouping, _historyLimit, (e, dayHeader) => new AgentHistoryRow(e, dayHeader, _main),
+            ProjectFilter == AllProjects ? null : $"Only in {ProjectFilter}.", out var more);
+        History = HistoryGroups.SelectMany(g => g.Rows).Cast<AgentHistoryRow>().ToList();
+        HasMoreHistory = more;
+        foreach (var name in new[] { nameof(HistoryGroups), nameof(History), nameof(HasHistory), nameof(HasMoreHistory), nameof(FoldAllText) })
+            OnPropertyChanged(name);
+    }
+
+    [RelayCommand]
+    private void FoldAll() => _timeline.FoldAll(HistoryGroups);
+
+    [RelayCommand]
+    private void ShowMoreHistory()
+    {
+        _historyLimit += HistoryShown;
+        BuildHistory();
     }
 
     /// <summary>An agent did something: its card shows it at once.</summary>
@@ -225,10 +267,15 @@ public sealed partial class CheckoutRow(Project project, TodoItem item, AgentAct
     [RelayCommand] private void Open() => owner.Reveal(project, item.Id);
 }
 
-/// <summary>Older agent work from the projects' history; a click goes where it happened, as in the Feed.</summary>
-public sealed partial class AgentHistoryRow(FeedEvent e, MainViewModel main)
+/// <summary>
+/// Older agent work from the projects' history, with the day's name above it when a day starts inside a week or month;
+/// a click goes where it happened, as in the Feed.
+/// </summary>
+public sealed partial class AgentHistoryRow(FeedEvent e, string? dayHeader, MainViewModel main)
 {
-    public string When => e.At.Date == DateTime.Today ? e.At.ToString("HH:mm", CultureInfo.CurrentCulture) : e.At.ToString("d MMM HH:mm", CultureInfo.CurrentCulture);
+    public string? DayHeader => dayHeader;
+    public string When => e.At.ToString("HH:mm", CultureInfo.CurrentCulture);
+    public string WhenToolTip => e.At.ToString("dddd d MMMM yyyy, HH:mm", CultureInfo.CurrentCulture);
     public string Who => e.Who;
     public string Action => e.Action;
     public string Subject => e.Subject.Replace("\r\n", " ").Replace('\n', ' ');

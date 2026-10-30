@@ -78,7 +78,7 @@ Other MCP clients run the same program with `--mcp`. If ProJict isn't running, i
 - **Agents** (in the sidebar, or right-click a project › **Agents**):
   - Each connected agent gets a card: where it works, what it's busy with (the dots move while it's active), what it has checked out, and its latest actions.
   - Agents can say what they're doing with set_status, for example "Running the tests".
-  - Older agent work is listed below, greyed out.
+  - Older agent work is listed below, greyed out, grouped by day, week or month like the Feed, each period with its own **Stats**.
 - **Finding the project:** set the project's local repo folder in **Details**. Agents also recognize the project by its GitHub link (the git remote) or a folder named like the project.
 - Turn agent access off under **Settings → AI agents**. Only programs running under your Windows account can connect; nothing is opened to the network.
 
@@ -140,6 +140,8 @@ Items, categories and groups each have a discussion with threaded replies, for y
 - **Dashboard**: progress, open bugs and stale projects across all projects, plus everything finished in the last week.
 - **Notifications**: Windows notifications for what needs you, while ProJict isn't in front: work to review, new comments in your discussions, ship plans to approve and people asking to join. You can also turn on agents checking out items, every comment, expiring API tokens and updates. Choose under **Settings → Notifications**; mute a project from its right-click menu. A click opens ProJict at the thing.
 - **Feed**: everything that happened across your projects, newest first: items added and finished, what AI agents did, comments, releases and notes. Filter by project, kind, person or agent and period, or search. Click an entry to go to it; a comment opens its discussion beside the Feed.
+  - **Group by** day, week or month. Click a period's name to fold it; **Collapse all** folds them all, for an overview.
+  - **Stats** next to a period opens its numbers and charts: how much happened, by people and by AI agents, when (by hour or by day), what kind of thing, in which projects and by whom. Hover a bar for its numbers.
 - **Inbox and quick capture**: press **Ctrl+Alt+J** anywhere (changeable in Settings) to jot down an item or idea. Turn an idea into a project from its right-click menu.
 - **Attachments**: drag files onto an item, paste a screenshot or copied files with Ctrl+V while editing it, or right-click it › **Attach files…**. To start a new item with a screenshot, paste it into the **Add item** box. Images show as thumbnails under the item. Click a picture to open it in ProJict's viewer, where you can mark it up (pen, highlighter, arrows, boxes, circles) and **Save copy** next to the original. Other files open in their usual app. Right-click an attachment to show it in its folder, copy its path or remove it.
 - **Copy prompt**: copies selected items as a ready-made prompt for AI coding assistants. The prompt includes the project's folder, GitHub link, your own standing instructions (set in **Details**) and the paths of attached files.

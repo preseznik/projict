@@ -116,16 +116,19 @@
 
         <!-- Older agent work, greyed out; a click goes where it happened. -->
         <DataTemplate x:Key="HistoryRow" DataType="{x:Type vm:AgentHistoryRow}">
+            <StackPanel>
+            <TextBlock Text="{Binding DayHeader}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="8,10,0,2"
+                       Visibility="{Binding DayHeader, Converter={StaticResource EmptyToVis}}" />
             <Border x:Name="EntryRoot" Padding="8,6" CornerRadius="6" Background="Transparent" Cursor="Hand" Opacity="0.6">
                 <Border.InputBindings>
                     <MouseBinding MouseAction="LeftClick" Command="{Binding OpenCommand}" />
                 </Border.InputBindings>
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="92" />
+                        <ColumnDefinition Width="60" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding When}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,1,0,0" />
+                    <TextBlock Text="{Binding When}" ToolTip="{Binding WhenToolTip}" Style="{StaticResource MutedText}" FontSize="12" Margin="0,1,0,0" VerticalAlignment="Top" />
                     <StackPanel Grid.Column="1">
                         <TextBlock TextWrapping="Wrap">
                             <Run Text="{Binding Who, Mode=OneWay}" FontWeight="SemiBold" /><Run Text=" " /><Run Text="{Binding Action, Mode=OneWay}" />
@@ -137,6 +140,7 @@
                     </StackPanel>
                 </Grid>
             </Border>
+            </StackPanel>
             <DataTemplate.Triggers>
                 <Trigger SourceName="EntryRoot" Property="IsMouseOver" Value="True">
                     <Setter TargetName="EntryRoot" Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
@@ -144,10 +148,27 @@
                 </Trigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <!-- A day, week or month of earlier agent work: its heading, its stats when opened, and its entries unless folded. -->
+        <DataTemplate x:Key="HistoryGroup" DataType="{x:Type vm:ActivityGroupViewModel}">
+            <StackPanel>
+                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource ActivityGroupHeader}" Focusable="False" />
+                <ContentControl Content="{Binding Stats}" ContentTemplate="{StaticResource ActivityStatsPanel}" Focusable="False"
+                                Visibility="{Binding IsStatsOpen, Converter={StaticResource BoolToVis}}" />
+                <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource HistoryRow}" Focusable="False"
+                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="28,20,28,20" MaxWidth="980" HorizontalAlignment="Left">
+        <!-- As wide as the window allows, up to 980: the stats and their charts get the room. -->
+        <Grid Margin="28,20,28,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="980" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+        <StackPanel>
             <DockPanel>
                 <ComboBox DockPanel.Dock="Right" ItemsSource="{Binding ProjectChoices}" SelectedItem="{Binding ProjectFilter}" Width="200" VerticalAlignment="Center"
                           AutomationProperties.Name="Project" ToolTip="Only agents working in this project" />
@@ -165,8 +186,17 @@
             <TextBlock Style="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="2,0,0,0"
                        Text="Agents can say what they're busy with (set_status); otherwise this shows what they last did here. The dots move while an agent is active." />
 
-            <TextBlock Text="Earlier" Style="{StaticResource SectionTitle}" Margin="0,24,0,4" Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}" />
-            <ItemsControl x:Name="HistoryList" ItemsSource="{Binding History}" ItemTemplate="{StaticResource HistoryRow}" Focusable="False" />
+            <DockPanel Margin="0,24,0,0" Visibility="{Binding HasHistory, Converter={StaticResource BoolToVis}}">
+                <ComboBox DockPanel.Dock="Right" ItemsSource="{x:Static vm:GroupingOption.All}" SelectedItem="{Binding Grouping}" DisplayMemberPath="Label" Width="130"
+                          VerticalAlignment="Center" AutomationProperties.Name="Group by" ToolTip="Group earlier agent work by day, week or month; each has its own stats" />
+                <Button DockPanel.Dock="Right" Style="{StaticResource SubtleButton}" Content="{Binding FoldAllText}" Command="{Binding FoldAllCommand}" Margin="0,0,8,0"
+                        ToolTip="Fold or open every period" />
+                <TextBlock Text="Earlier" Style="{StaticResource SectionTitle}" Margin="0" VerticalAlignment="Center" />
+            </DockPanel>
+            <ItemsControl x:Name="HistoryList" ItemsSource="{Binding HistoryGroups}" ItemTemplate="{StaticResource HistoryGroup}" Focusable="False" />
+            <Button Content="Show more" HorizontalAlignment="Left" Margin="0,12,0,0" Command="{Binding ShowMoreHistoryCommand}"
+                    Visibility="{Binding HasMoreHistory, Converter={StaticResource BoolToVis}}" />
         </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

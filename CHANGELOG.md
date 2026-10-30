@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.20 (2026-10-30)
+
+- **The Feed groups what happened by day, week or month** (Group by). Click a period's name to fold it; Collapse all folds them all.
+  - **Stats** next to each period opens its numbers and charts: how much happened, by people and by AI agents, the busiest hour or day, a chart of when, and bars for what kind of thing, which projects and who.
+  - The period filter now shows whole weeks or months when grouped that way, so their stats are complete.
+- The Agents view groups earlier agent work the same way, each period with its own stats.
+
 ## 0.1.19 (2026-10-30)
 
 - A category's discussion also shows what was said on its items: each item's comments as a sub-thread under the item's name, the most recently active first, done items included. Replies there go to the item, and the item's name shows it on the board.

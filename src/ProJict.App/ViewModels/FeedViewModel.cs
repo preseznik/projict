@@ -17,7 +17,10 @@ public sealed record FeedPeriodOption(string Label, int? Days)
     public override string ToString() => Label;
 }
 
-/// <summary>The Feed: a timeline of everything that happened in ProJict, filtered and searched, each entry leading to its item.</summary>
+/// <summary>
+/// The Feed: a timeline of everything that happened in ProJict, filtered and searched, grouped by day, week or month
+/// (each period folds and has its own stats), each entry leading to its item.
+/// </summary>
 public sealed partial class FeedViewModel : ObservableObject
 {
     public const string AllProjects = "All projects";
@@ -28,6 +31,7 @@ public sealed partial class FeedViewModel : ObservableObject
 
     private readonly AppState _state;
     private readonly MainViewModel _main;
+    private readonly ActivityTimeline _timeline;
     private List<FeedEvent> _all = [];
     private int _limit = PageSize;
 
@@ -35,6 +39,8 @@ public sealed partial class FeedViewModel : ObservableObject
     {
         _state = state;
         _main = main;
+        _timeline = new ActivityTimeline(agentsOnly: false, Apply);
+        _grouping = GroupingOption.For(state.AppSettings.FeedGrouping);
     }
 
     public static IReadOnlyList<FeedKindOption> KindOptions { get; } =
@@ -61,10 +67,15 @@ public sealed partial class FeedViewModel : ObservableObject
     [ObservableProperty] private FeedKindOption _kindFilter = KindOptions[0];
     [ObservableProperty] private string _whoFilter = Everyone;
     [ObservableProperty] private FeedPeriodOption _period = Periods[1];
+    [ObservableProperty] private GroupingOption _grouping;
 
     public List<string> ProjectChoices { get; private set; } = [AllProjects];
     public List<string> WhoChoices { get; private set; } = [Everyone, People, Agents];
+    /// <summary>The periods shown, newest first.</summary>
+    public List<ActivityGroupViewModel> Groups { get; private set; } = [];
+    /// <summary>Every entry built, in order (folded periods have none).</summary>
     public List<FeedRowViewModel> Rows { get; private set; } = [];
+    public string FoldAllText => ActivityTimeline.FoldAllText(Groups);
     public bool HasMore { get; private set; }
     public string Summary { get; private set; } = "";
     public bool IsFiltered => SearchText.Trim().Length > 0 || ProjectFilter != AllProjects || KindFilter != KindOptions[0] || WhoFilter != Everyone;
@@ -77,6 +88,13 @@ public sealed partial class FeedViewModel : ObservableObject
     partial void OnKindFilterChanged(FeedKindOption value) => Reapply();
     partial void OnWhoFilterChanged(string value) => Reapply();
     partial void OnPeriodChanged(FeedPeriodOption value) => Reapply();
+
+    partial void OnGroupingChanged(GroupingOption value)
+    {
+        _state.AppSettings.FeedGrouping = value.Grouping;
+        _state.SaveAppSettings();
+        Reapply();
+    }
 
     private void Reapply()
     {
@@ -103,7 +121,9 @@ public sealed partial class FeedViewModel : ObservableObject
     private void Apply()
     {
         var terms = SearchText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        // Whole periods: "last 7 days" by month shows the months those days fall in, so each month's stats are complete.
         var since = Period.Days switch { null => DateTime.MinValue, 0 => DateTime.Today, var days => DateTime.Now.AddDays(-days.Value) };
+        if (since > DateTime.MinValue) since = ActivityPeriods.StartOf(since, Grouping.Grouping);
         var matches = _all.Where(e =>
             e.At >= since &&
             (ProjectFilter == AllProjects || string.Equals(e.Project?.Name, ProjectFilter, StringComparison.OrdinalIgnoreCase)) &&
@@ -117,27 +137,24 @@ public sealed partial class FeedViewModel : ObservableObject
             } &&
             terms.All(t => e.SearchText.Contains(t, StringComparison.OrdinalIgnoreCase))).ToList();
 
-        DateTime? day = null;
-        Rows = matches.Take(_limit).Select(e =>
-        {
-            var header = day != e.At.Date ? DayName(e.At) : null;
-            day = e.At.Date;
-            return new FeedRowViewModel(e, header, this);
-        }).ToList();
-        HasMore = matches.Count > _limit;
+        Groups = _timeline.Build(matches, Grouping.Grouping, _limit, (e, dayHeader) => new FeedRowViewModel(e, dayHeader, this),
+            IsFiltered ? "Counts only what the filters let through." : null, out var more);
+        Rows = Groups.SelectMany(g => g.Rows).Cast<FeedRowViewModel>().ToList();
+        HasMore = more;
         Summary = matches.Count == _all.Count && Period.Days == null
             ? $"{_all.Count} events"
             : $"{matches.Count} of {_all.Count} events";
+        OnPropertyChanged(nameof(Groups));
         OnPropertyChanged(nameof(Rows));
+        OnPropertyChanged(nameof(FoldAllText));
         OnPropertyChanged(nameof(HasMore));
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(IsFiltered));
         OnPropertyChanged(nameof(EmptyText));
     }
 
-    private static string DayName(DateTime at) => at.Date == DateTime.Today ? "Today"
-        : at.Date == DateTime.Today.AddDays(-1) ? "Yesterday"
-        : at.ToString(at.Year == DateTime.Today.Year ? "dddd d MMMM" : "dddd d MMMM yyyy", CultureInfo.CurrentCulture);
+    [RelayCommand]
+    private void FoldAll() => _timeline.FoldAll(Groups);
 
     [RelayCommand]
     private void ShowMore()
@@ -192,7 +209,7 @@ public sealed partial class FeedViewModel : ObservableObject
     }
 }
 
-/// <summary>One entry in the Feed, with the day heading above it when it starts a new day.</summary>
+/// <summary>One entry in the Feed, with the day's name above it when it starts a new day inside a week or month.</summary>
 public sealed partial class FeedRowViewModel(FeedEvent e, string? dayHeader, FeedViewModel owner)
 {
     public FeedEvent Event { get; } = e;
